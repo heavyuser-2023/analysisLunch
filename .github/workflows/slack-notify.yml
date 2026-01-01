@@ -23,7 +23,8 @@ jobs:
       - name: Compile and Run Java
         env:
           # GitHub Secrets에서 가져와 환경 변수로 설정
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
         run: |
           javac SlackSender.java
           java SlackSender
