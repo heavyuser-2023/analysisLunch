@@ -1,0 +1,29 @@
+name: Hourly Slack Notification
+
+on:
+  schedule:
+    # 매 시 정각에 실행 (UTC 기준이므로 한국 시간 -9시간)
+    - cron: '0 * * * *'
+  workflow_dispatch: # 수동으로 실행 버튼을 눌러 테스트할 수 있게 함
+
+jobs:
+  send-slack:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Compile and Run Java
+        env:
+          # GitHub Secrets에서 가져와 환경 변수로 설정
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          javac SlackSender.java
+          java SlackSender
