@@ -105,7 +105,7 @@ public class SlackSender {
      * Gemini API Client
      */
     static class GeminiClient {
-        private static final String API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent";
+        private static final String API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent";
         private final String apiKey;
 
         GeminiClient(String apiKey) {
