@@ -35,11 +35,17 @@ public class SlackSender {
             File processedFile = new File(TEMP_PROCESSED_FILE);
             ImageProcessor.convertPngToWhiteBgJpg(originalFile, processedFile);
             
-            // 3. Upload to Slack
+            // 3. Analyze with Gemini
+            System.out.println("- Analyzing image with Gemini...");
+            GeminiClient geminiClient = new GeminiClient(config.geminiApiKey);
+            String analysisResult = geminiClient.analyze(processedFile);
+            System.out.println("Analysis: " + analysisResult);
+            
+            // 4. Upload to Slack
             System.out.println("- Uploading to Slack...");
             SlackClient slackClient = new SlackClient(config.botToken);
             String title = "오늘의 점심 메뉴";
-            String initialComment = "📢 *오늘의 점심 메뉴* (이미지 처리 완료)";
+            String initialComment = "📢 *오늘의 점심 메뉴* (이미지 처리 완료)\n\n" + analysisResult;
             
             slackClient.uploadFile(config.channelId, processedFile, title, initialComment);
             
@@ -69,15 +75,18 @@ public class SlackSender {
     static class Config {
         final String botToken;
         final String channelId;
+        final String geminiApiKey;
 
-        Config(String botToken, String channelId) {
+        Config(String botToken, String channelId, String geminiApiKey) {
             this.botToken = botToken;
             this.channelId = channelId;
+            this.geminiApiKey = geminiApiKey;
         }
 
         static Config load() {
             String botToken = System.getenv("SLACK_BOT_TOKEN");
             String channelId = System.getenv("SLACK_CHANNEL_ID");
+            String geminiApiKey = System.getenv("GEMINI_API_KEY");
 
             if (botToken == null || botToken.isEmpty()) {
                 throw new IllegalStateException("Missing environment variable: SLACK_BOT_TOKEN");
@@ -85,7 +94,78 @@ public class SlackSender {
             if (channelId == null || channelId.isEmpty()) {
                 throw new IllegalStateException("Missing environment variable: SLACK_CHANNEL_ID");
             }
-            return new Config(botToken, channelId);
+            if (geminiApiKey == null || geminiApiKey.isEmpty()) {
+                throw new IllegalStateException("Missing environment variable: GEMINI_API_KEY");
+            }
+            return new Config(botToken, channelId, geminiApiKey);
+        }
+    }
+
+    /**
+     * Gemini API Client
+     */
+    static class GeminiClient {
+        private static final String API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent";
+        private final String apiKey;
+
+        GeminiClient(String apiKey) {
+            this.apiKey = apiKey;
+        }
+
+        String analyze(File imageFile) throws IOException {
+            String base64Image = encodeImageToBase64(imageFile);
+            
+            // JSON Payload manual construction is tricky with large base64, usually safe if no special chars in base64 (which is true)
+            // But we need to be careful with the prompt text escaping if it had quotes.
+            String prompt = """
+                [Role] 너는 임상 영양학적 관점에서 식단을 분석하는 전문가야. 사진 속 음식을 분석하여 당뇨(혈당), 고혈압(나트륨), 고지혈증(지방), 다이어트(칼로리) 관리 측면에서 주의해야 할 성분 정보를 제공해줘.
+
+                [Instruction]
+
+                메뉴 구성: 사진에 담긴 주요 메뉴를 한 문장으로 요약해.
+
+                질환별 핵심 주의 성분: 아래 세 가지 항목에 해당하는 메뉴와 이유를 핵심만 설명해.
+
+                당질(탄수화물): 혈당 및 체중 관리에 영향을 주는 정제 탄수화물, 당분 함량 분석.
+
+                나트륨: 혈압 및 부종에 영향을 주는 소금기, 장류, 국물 분석.
+
+                지방: 혈관 건강에 영향을 주는 튀김, 포화지방, 고칼로리 부위 분석.
+
+                [Constraint]
+
+                실천 가이드나 조언(예: ~하세요, ~남기세요)은 절대 포함하지 말 것.
+
+                오직 식단의 구성 성분이 건강 관리에 미치는 부정적 요인(위험 요소) 분석에만 집중할 것.
+
+                전체 내용은 최대한 짧고 건조한 문체로 작성할 것.
+                """;
+            
+            // Escape for JSON
+            String escapedPrompt = prompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+            
+            String jsonBody = "{"
+                + "\"contents\": [{"
+                + "\"parts\": ["
+                + "{\"text\": \"" + escapedPrompt + "\"},"
+                + "{\"inline_data\": {\"mime_type\": \"image/jpeg\", \"data\": \"" + base64Image + "\"}}"
+                + "]"
+                + "}]"
+                + "}";
+
+            String response = HttpUtils.postJson(API_URL + "?key=" + apiKey, null, jsonBody);
+            System.out.println("Gemini Raw Response: " + response);
+            
+            // Extract text from response deeply nested JSON
+            return JsonUtils.extractGeminiText(response);
+        }
+
+        private String encodeImageToBase64(File file) throws IOException {
+            try (FileInputStream fis = new FileInputStream(file)) {
+                byte[] bytes = new byte[(int) file.length()];
+                fis.read(bytes);
+                return java.util.Base64.getEncoder().encodeToString(bytes);
+            }
         }
     }
 
@@ -130,9 +210,12 @@ public class SlackSender {
         }
 
         private String callCompleteUpload(String fileId, String title, String initialComment, String channelId) throws IOException {
+            // JSON Escaping for initialComment
+            String escapedComment = initialComment.replace("\"", "\\\"").replace("\n", "\\n");
+            
             String jsonBody = String.format(
                 "{\"files\":[{\"id\":\"%s\",\"title\":\"%s\"}],\"channel_id\":\"%s\",\"initial_comment\":\"%s\"}",
-                fileId, title, channelId, initialComment
+                fileId, title, channelId, escapedComment
             );
             return HttpUtils.postJson(API_COMPLETE, token, jsonBody);
         }
@@ -178,7 +261,9 @@ public class SlackSender {
         static String get(String urlStr, String token) throws IOException {
             HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
             conn.setRequestMethod("GET");
-            conn.setRequestProperty("Authorization", "Bearer " + token);
+            if (token != null) {
+                conn.setRequestProperty("Authorization", "Bearer " + token);
+            }
             return readResponse(conn);
         }
 
@@ -186,7 +271,9 @@ public class SlackSender {
             HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
-            conn.setRequestProperty("Authorization", "Bearer " + token);
+            if (token != null) {
+                conn.setRequestProperty("Authorization", "Bearer " + token);
+            }
             conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
             
             try (OutputStream os = conn.getOutputStream()) {
@@ -236,6 +323,18 @@ public class SlackSender {
             Pattern pattern = Pattern.compile("\"" + key + "\"\\s*:\\s*\"([^\"]+)\"");
             Matcher matcher = pattern.matcher(json);
             return matcher.find() ? matcher.group(1) : null;
+        }
+
+        static String extractGeminiText(String json) {
+            // Improved regex to handle escaped quotes and characters inside JSON strings
+            Pattern pattern = Pattern.compile("\"text\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+            Matcher matcher = pattern.matcher(json);
+            if (matcher.find()) {
+                // Return unescaped newlines and quotes
+                String content = matcher.group(1);
+                return content.replace("\\n", "\n").replace("\\\"", "\"");
+            }
+            return "분석 결과 없음";
         }
     }
 }

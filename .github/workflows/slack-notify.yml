@@ -2,8 +2,8 @@ name: Hourly Slack Notification
 
 on:
   schedule:
-    # 매 시 정각에 실행 (UTC 기준이므로 한국 시간 -9시간)
-    - cron: '0 * * * *'
+    # 한국 시간 명일 오전 8시 실행 (KST 08:00 == UTC 23:00)
+    - cron: '0 23 * * *'
   workflow_dispatch: # 수동으로 실행 버튼을 눌러 테스트할 수 있게 함
 
 jobs:
@@ -25,6 +25,7 @@ jobs:
           # GitHub Secrets에서 가져와 환경 변수로 설정
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           javac SlackSender.java
           java SlackSender
