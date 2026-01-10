@@ -15,7 +15,7 @@ import javax.imageio.ImageIO;
  */
 public class SlackSender {
 
-    private static final String IMAGE_URL = "https://mblogthumb-phinf.pstatic.net/MjAyNTEyMzFfMjA3/MDAxNzY3MTYzMTM0MTE1.kFz3iaGWhYyUTEUP3PCY3_nVYvH74T_GRjChkSMW-zwg.beTQZBktpQcUw3fITP7lchshOtcaQEDq03rdngROlrYg.PNG/image.png?type=w800";
+    private static final String BLOG_URL = "https://m.blog.naver.com/yjm3038/222191646255";
     private static final String TEMP_ORIGINAL_FILE = "temp_original.png";
     private static final String TEMP_PROCESSED_FILE = "lunch_menu_white_bg.jpg";
 
@@ -25,29 +25,38 @@ public class SlackSender {
             
             System.out.println("Processing started...");
             
-            // 1. Download Image
+            // 1. Extract image URL from blog page
+            System.out.println("- Extracting image URL from blog...");
+            String imageUrl = extractImageUrlFromBlog(BLOG_URL);
+            System.out.println("  Found image URL: " + imageUrl);
+            
+            // 2. Download Image
             System.out.println("- Downloading image...");
             File originalFile = new File(TEMP_ORIGINAL_FILE);
-            ImageProcessor.download(IMAGE_URL, originalFile);
+            ImageProcessor.download(imageUrl, originalFile);
             
-            // 2. Process Image (Remove Transparency)
+            // 3. Process Image (Remove Transparency)
             System.out.println("- Processing image (adding white background)...");
             File processedFile = new File(TEMP_PROCESSED_FILE);
             ImageProcessor.convertPngToWhiteBgJpg(originalFile, processedFile);
             
-            // 3. Analyze with Gemini
-            System.out.println("- Analyzing image with Gemini...");
+            // 4. Extract menu text from image
+            System.out.println("- Extracting menu text from image...");
             GeminiClient geminiClient = new GeminiClient(config.geminiApiKey);
-            String analysisResult = geminiClient.analyze(processedFile);
-            System.out.println("Analysis: " + analysisResult);
+            String menuText = geminiClient.extractMenuText(processedFile);
+            System.out.println("Extracted Menu: " + menuText);
             
-            // 4. Upload to Slack
-            System.out.println("- Uploading to Slack...");
+            // 5. Generate food tray image
+            System.out.println("- Generating food tray image with Gemini...");
+            File generatedImage = geminiClient.generateFoodImage(menuText);
+            
+            // 6. Upload to Slack
+            System.out.println("- Uploading generated image to Slack...");
             SlackClient slackClient = new SlackClient(config.botToken);
             String title = "오늘의 점심 메뉴";
-            String initialComment = "📢 *오늘의 점심 메뉴* (이미지 처리 완료)\n\n" + analysisResult;
+            String initialComment = "📢 *오늘의 점심 메뉴*\n\n" + menuText;
             
-            slackClient.uploadFile(config.channelId, processedFile, title, initialComment);
+            slackClient.uploadFile(config.channelId, generatedImage, title, initialComment);
             
             System.out.println("✅ Task completed successfully.");
 
@@ -59,6 +68,7 @@ public class SlackSender {
             // Cleanup temp files
             deleteFile(TEMP_ORIGINAL_FILE);
             deleteFile(TEMP_PROCESSED_FILE);
+            deleteFile("generated_food.png");
         }
     }
 
@@ -67,6 +77,33 @@ public class SlackSender {
         if (file.exists()) {
             file.delete();
         }
+    }
+
+    /**
+     * 네이버 블로그 페이지에서 se-module-image 클래스의 img 태그 URL을 추출
+     */
+    private static String extractImageUrlFromBlog(String blogUrl) throws IOException {
+        // 네이버 모바일 블로그 HTML 가져오기
+        String html = HttpUtils.getHtml(blogUrl);
+        
+        // se-module se-module-image 클래스를 찾고 그 안의 img 태그의 src 추출
+        // 패턴: class="se-module se-module-image" ... <img ... src="..." 또는 data-lazy-src="..."
+        Pattern modulePattern = Pattern.compile(
+            "class=\"se-module se-module-image\"[^>]*>[\\s\\S]*?<img[^>]+(?:data-lazy-src|src)=\"([^\"]+)\"",
+            Pattern.CASE_INSENSITIVE
+        );
+        
+        Matcher matcher = modulePattern.matcher(html);
+        if (matcher.find()) {
+            String imageUrl = matcher.group(1);
+            // URL이 상대경로인 경우 처리
+            if (imageUrl.startsWith("//")) {
+                imageUrl = "https:" + imageUrl;
+            }
+            return imageUrl;
+        }
+        
+        throw new IOException("블로그 페이지에서 이미지를 찾을 수 없습니다: " + blogUrl);
     }
 
     /**
@@ -102,46 +139,25 @@ public class SlackSender {
     }
 
     /**
-     * Gemini API Client
+     * Gemini API Client - 메뉴 텍스트 추출 및 이미지 생성
      */
     static class GeminiClient {
-        private static final String API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent";
+        private static final String API_URL_TEXT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+        private static final String API_URL_IMAGE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent";
+        private static final String TEMP_GENERATED_FILE = "generated_food.png";
         private final String apiKey;
 
         GeminiClient(String apiKey) {
             this.apiKey = apiKey;
         }
 
-        String analyze(File imageFile) throws IOException {
+        /**
+         * 메뉴 이미지에서 텍스트 추출 (OCR)
+         */
+        String extractMenuText(File imageFile) throws IOException {
             String base64Image = encodeImageToBase64(imageFile);
             
-            // JSON Payload manual construction is tricky with large base64, usually safe if no special chars in base64 (which is true)
-            // But we need to be careful with the prompt text escaping if it had quotes.
-            String prompt = """
-                [Role] 너는 임상 영양학적 관점에서 식단을 분석하는 전문가야. 사진 속 음식을 분석하여 당뇨(혈당), 고혈압(나트륨), 고지혈증(지방), 다이어트(칼로리) 관리 측면에서 주의해야 할 성분 정보를 제공해줘.
-
-                [Instruction]
-
-                메뉴 구성: 사진에 담긴 주요 메뉴를 한 문장으로 요약해.
-
-                질환별 핵심 주의 성분: 아래 세 가지 항목에 해당하는 메뉴와 이유를 핵심만 설명해.
-
-                당질(탄수화물): 혈당 및 체중 관리에 영향을 주는 정제 탄수화물, 당분 함량 분석.
-
-                나트륨: 혈압 및 부종에 영향을 주는 소금기, 장류, 국물 분석.
-
-                지방: 혈관 건강에 영향을 주는 튀김, 포화지방, 고칼로리 부위 분석.
-
-                [Constraint]
-
-                실천 가이드나 조언(예: ~하세요, ~남기세요)은 절대 포함하지 말 것.
-
-                오직 식단의 구성 성분이 건강 관리에 미치는 부정적 요인(위험 요소) 분석에만 집중할 것.
-
-                전체 내용은 최대한 짧고 건조한 문체로 작성할 것.
-                """;
-            
-            // Escape for JSON
+            String prompt = "이 이미지는 구내식당 메뉴판입니다. 오늘의 메뉴 내용만 추출해서 간결하게 나열해주세요. 메뉴 이름만 쉼표로 구분해서 작성하세요.";
             String escapedPrompt = prompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
             
             String jsonBody = "{"
@@ -153,11 +169,62 @@ public class SlackSender {
                 + "}]"
                 + "}";
 
-            String response = HttpUtils.postJson(API_URL + "?key=" + apiKey, null, jsonBody);
-            System.out.println("Gemini Raw Response: " + response);
+            String response = HttpUtils.postJson(API_URL_TEXT + "?key=" + apiKey, null, jsonBody);
+            System.out.println("Menu Text Extraction Response: " + response);
             
-            // Extract text from response deeply nested JSON
             return JsonUtils.extractGeminiText(response);
+        }
+
+        /**
+         * 메뉴 텍스트를 기반으로 식판 이미지 생성
+         */
+        File generateFoodImage(String menuText) throws IOException {
+            String prompt = String.format("""
+                당신은 한국 구내식당 음식 사진 전문가입니다.
+                다음 메뉴를 한국식 스테인리스 6칸 식판에 담긴 실제 음식 사진처럼 생성해주세요.
+
+                메뉴: %s
+
+                조건:
+                - 한국식 플라스틱 식판 사용, 약하게 회색이고, 작은 검은색의 점들이 조금씩 있어, 오른쪽에 수저와 젓가락을 놓는 위치가 있어.
+                - 하단에는 네모 밥 칸와 동그라미 국칸이 배치되고, 국은 별도 동그란 그릇을 사용합니다.
+                - 상단에는 3개의 반찬이 배치됩니다. 좌우 반찬칸은 동그라미이고, 가운데는 네모 칸인데, 이 네모 칸은 한번더 좌우로 나누어 져야 합니다.
+                - 밥, 국, 반찬들이 각 칸에 적절히 배치
+                - 위에서 내려다본 시점 (top-down view)
+                - 자연스러운 조명과 사실적인 음식 질감
+                - 깔끔한 흰색 테이블 배경
+                - 고해상도, 선명한 이미지
+                """, menuText);
+            
+            String escapedPrompt = prompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+            
+            String jsonBody = "{"
+                + "\"contents\": [{"
+                + "\"parts\": [{\"text\": \"" + escapedPrompt + "\"}]"
+                + "}],"
+                + "\"generationConfig\": {"
+                + "\"responseModalities\": [\"IMAGE\", \"TEXT\"]"
+                + "}"
+                + "}";
+
+            String response = HttpUtils.postJson(API_URL_IMAGE + "?key=" + apiKey, null, jsonBody);
+            System.out.println("Image Generation Response received (length: " + response.length() + ")");
+            
+            // Extract base64 image data from response
+            String base64Image = JsonUtils.extractImageData(response);
+            if (base64Image == null || base64Image.isEmpty()) {
+                throw new IOException("Failed to generate image. Response: " + response.substring(0, Math.min(500, response.length())));
+            }
+            
+            // Decode and save image
+            byte[] imageBytes = java.util.Base64.getDecoder().decode(base64Image);
+            File outputFile = new File(TEMP_GENERATED_FILE);
+            try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+                fos.write(imageBytes);
+            }
+            
+            System.out.println("Generated image saved: " + outputFile.getAbsolutePath());
+            return outputFile;
         }
 
         private String encodeImageToBase64(File file) throws IOException {
@@ -267,6 +334,19 @@ public class SlackSender {
             return readResponse(conn);
         }
 
+        /**
+         * HTML 페이지 가져오기 (브라우저 User-Agent 포함)
+         */
+        static String getHtml(String urlStr) throws IOException {
+            HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+            conn.setRequestProperty("Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7");
+            conn.setInstanceFollowRedirects(true);
+            return readResponse(conn);
+        }
+
         static String postJson(String urlStr, String token, String jsonBody) throws IOException {
             HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
             conn.setRequestMethod("POST");
@@ -335,6 +415,19 @@ public class SlackSender {
                 return content.replace("\\n", "\n").replace("\\\"", "\"");
             }
             return "분석 결과 없음";
+        }
+
+        /**
+         * Extract base64 image data from Gemini response
+         */
+        static String extractImageData(String json) {
+            // Look for inlineData -> data field containing base64 image
+            Pattern pattern = Pattern.compile("\"data\"\\s*:\\s*\"([A-Za-z0-9+/=]+)\"");
+            Matcher matcher = pattern.matcher(json);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+            return null;
         }
     }
 }
