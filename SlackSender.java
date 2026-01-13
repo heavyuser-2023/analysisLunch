@@ -43,18 +43,19 @@ public class SlackSender {
             // 4. Extract menu text from image
             System.out.println("- Extracting menu text from image...");
             GeminiClient geminiClient = new GeminiClient(config.geminiApiKey);
-            String menuText = geminiClient.extractMenuText(processedFile);
-            System.out.println("Extracted Menu: " + menuText);
+            MenuInfo menuInfo = geminiClient.extractMenuInfo(processedFile);
+            System.out.println("Extracted Date: " + menuInfo.date());
+            System.out.println("Extracted Menu: " + menuInfo.menu());
             
             // 5. Generate food tray image
             System.out.println("- Generating food tray image with Gemini...");
-            File generatedImage = geminiClient.generateFoodImage(menuText);
+            File generatedImage = geminiClient.generateFoodImage(menuInfo.menu());
             
             // 6. Upload to Slack
             System.out.println("- Uploading generated image to Slack...");
             SlackClient slackClient = new SlackClient(config.botToken);
             String title = "오늘의 점심 메뉴";
-            String initialComment = "📢 *오늘의 점심 메뉴*\n\n" + menuText;
+            String initialComment = "📢 *오늘의 점심 메뉴 (" + menuInfo.date() + ")*\n\n" + menuInfo.menu();
             
             slackClient.uploadFile(config.channelId, generatedImage, title, initialComment);
             
@@ -139,6 +140,22 @@ public class SlackSender {
     }
 
     /**
+     * Data carrier for Menu and Date
+     */
+    static class MenuInfo {
+        private final String date;
+        private final String menu;
+
+        MenuInfo(String date, String menu) {
+            this.date = date;
+            this.menu = menu;
+        }
+
+        String date() { return date; }
+        String menu() { return menu; }
+    }
+
+    /**
      * Gemini API Client - 메뉴 텍스트 추출 및 이미지 생성
      */
     static class GeminiClient {
@@ -152,12 +169,12 @@ public class SlackSender {
         }
 
         /**
-         * 메뉴 이미지에서 텍스트 추출 (OCR)
+         * 메뉴 이미지에서 날짜와 텍스트 추출 (OCR)
          */
-        String extractMenuText(File imageFile) throws IOException {
+        MenuInfo extractMenuInfo(File imageFile) throws IOException {
             String base64Image = encodeImageToBase64(imageFile);
             
-            String prompt = "이 이미지는 구내식당 메뉴판입니다. 오늘의 메뉴 내용만 추출해서 간결하게 나열해주세요. 메뉴 이름만 쉼표로 구분해서 작성하세요.";
+            String prompt = "이 이미지는 구내식당 메뉴판입니다. 오늘의 날짜와 메뉴 내용을 추출해주세요. 첫 번째 줄에는 날짜만 적고, 두 번째 줄에는 메뉴 이름만 쉼표로 구분해서 작성해주세요. 설명이나 다른 말은 하지 마세요.";
             String escapedPrompt = prompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
             
             String jsonBody = "{"
@@ -172,7 +189,15 @@ public class SlackSender {
             String response = HttpUtils.postJson(API_URL_TEXT + "?key=" + apiKey, null, jsonBody);
             System.out.println("Menu Text Extraction Response: " + response);
             
-            return JsonUtils.extractGeminiText(response);
+            String fullText = JsonUtils.extractGeminiText(response);
+            // 줄바꿈으로 날짜와 메뉴 분리
+            String[] lines = fullText.trim().split("\n", 2);
+            if (lines.length >= 2) {
+                return new MenuInfo(lines[0].trim(), lines[1].trim());
+            } else {
+                // 분리에 실패한 경우 전체를 메뉴로 간주
+                return new MenuInfo("날짜 없음", fullText.trim());
+            }
         }
 
         /**
@@ -186,9 +211,10 @@ public class SlackSender {
                 메뉴: %s
 
                 조건:
-                - 한국식 플라스틱 식판 사용, 약하게 회색이고, 작은 검은색의 점들이 조금씩 있어, 오른쪽에 수저와 젓가락을 놓는 위치가 있어.
+                - 한국식 플라스틱 식판 사용, 약하게 회색이고, 작은 검은색의 점들이 조금씩 있어, 오른쪽에 수저와 젓가락을 놓는 칸이 있고, 수저 젓가락 놓는 위에 작은 간장 이나 초고추장 넣는 작은 라운드의 사각형 칸이 있어.
                 - 하단에는 네모 밥 칸와 동그라미 국칸이 배치되고, 국은 별도 동그란 그릇을 사용합니다.
                 - 상단에는 3개의 반찬이 배치됩니다. 좌우 반찬칸은 동그라미이고, 가운데는 네모 칸인데, 이 네모 칸은 한번더 좌우로 나누어 져야 합니다.
+                - 위에 정의한 식판의 칸 이외에 더 추가되지 말하야 합니다.
                 - 밥, 국, 반찬들이 각 칸에 적절히 배치,
                 - 반찬이 칸보다 작은경우, 적정하게 나누어서 배치,
                 - 위에서 내려다본 시점 (top-down view)
