@@ -55,7 +55,7 @@ public class SlackSender {
             System.out.println("- Uploading generated image to Slack...");
             SlackClient slackClient = new SlackClient(config.botToken);
             String title = "오늘의 점심 메뉴";
-            String initialComment = "📢 *오늘의 점심 메뉴 (" + menuInfo.date() + ")*\n\n" + menuInfo.menu();
+            String initialComment = "📢 *오늘의 점심 메뉴 (" + menuInfo.date() + ")*" + "\n\n AI가 생성한 이미지 입니다. 실제 음식과 다를 수 있습니다." + "\n\n" + menuInfo.menu();
             
             slackClient.uploadFile(config.channelId, generatedImage, title, initialComment);
             
