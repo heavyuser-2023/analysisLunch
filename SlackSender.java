@@ -58,6 +58,18 @@ public class SlackSender {
             String initialComment = "📢 *오늘의 점심 메뉴 (" + menuInfo.date() + ")*" + "\n\n AI가 생성한 이미지 입니다. 실제 음식과 다를 수 있습니다." + "\n\n" + menuInfo.menu();
             
             slackClient.uploadFile(config.channelId, generatedImage, title, initialComment);
+
+            // 7. Upload to google chat
+            System.out.println("- Uploading image to GitHub...");
+            GitHubUploader githubUploader = new GitHubUploader(config.githubToken, config.githubRepo);
+            String imageFilename = "lunch_" + System.currentTimeMillis() + ".png";
+            githubUploader.uploadImage(generatedImage, imageFilename);
+            String githubImageUrl = githubUploader.getRawUrl(imageFilename);
+            System.out.println("  Image URL: " + githubImageUrl);
+
+            System.out.println("- Sending to Google Chat...");
+            GoogleChatClient chatClient = new GoogleChatClient(config.googleChatWebhook);
+            chatClient.sendCard(githubImageUrl, title, initialComment);
             
             System.out.println("✅ Task completed successfully.");
 
@@ -114,17 +126,27 @@ public class SlackSender {
         final String botToken;
         final String channelId;
         final String geminiApiKey;
+        final String githubToken;
+        final String githubRepo;
+        final String googleChatWebhook;
 
-        Config(String botToken, String channelId, String geminiApiKey) {
+        Config(String botToken, String channelId, String geminiApiKey, 
+               String githubToken, String githubRepo, String googleChatWebhook) {
             this.botToken = botToken;
             this.channelId = channelId;
             this.geminiApiKey = geminiApiKey;
+            this.githubToken = githubToken;
+            this.githubRepo = githubRepo;
+            this.googleChatWebhook = googleChatWebhook;
         }
 
         static Config load() {
             String botToken = System.getenv("SLACK_BOT_TOKEN");
             String channelId = System.getenv("SLACK_CHANNEL_ID");
             String geminiApiKey = System.getenv("GEMINI_API_KEY");
+            String githubToken = System.getenv("GITHUB_TOKEN");
+            String githubRepo = System.getenv("GITHUB_REPO");
+            String googleChatWebhook = System.getenv("GOOGLE_CHAT_WEBHOOK_URL");
 
             if (botToken == null || botToken.isEmpty()) {
                 throw new IllegalStateException("Missing environment variable: SLACK_BOT_TOKEN");
@@ -135,7 +157,16 @@ public class SlackSender {
             if (geminiApiKey == null || geminiApiKey.isEmpty()) {
                 throw new IllegalStateException("Missing environment variable: GEMINI_API_KEY");
             }
-            return new Config(botToken, channelId, geminiApiKey);
+            if (githubToken == null || githubToken.isEmpty()) {
+                throw new IllegalStateException("Missing environment variable: GITHUB_TOKEN");
+            }
+            if (githubRepo == null || githubRepo.isEmpty()) {
+                throw new IllegalStateException("Missing environment variable: GITHUB_REPO");
+            }
+            if (googleChatWebhook == null || googleChatWebhook.isEmpty()) {
+                throw new IllegalStateException("Missing environment variable: GOOGLE_CHAT_WEBHOOK_URL");
+            }
+            return new Config(botToken, channelId, geminiApiKey, githubToken, githubRepo, googleChatWebhook);
         }
     }
 
@@ -459,6 +490,161 @@ public class SlackSender {
                 return matcher.group(1);
             }
             return null;
+        }
+    }
+
+    /**
+     * GitHub API Client - 이미지를 저장소에 업로드하고 Raw URL 반환
+     */
+    static class GitHubUploader {
+        private static final String API_BASE = "https://api.github.com";
+        private static final String BRANCH = "main";
+        private static final String IMAGE_PATH = "images";
+        private final String token;
+        private final String repo;
+
+        GitHubUploader(String token, String repo) {
+            this.token = token;
+            this.repo = repo;
+        }
+
+        /**
+         * GitHub Contents API를 이용해 이미지 업로드
+         */
+        void uploadImage(File file, String filename) throws IOException {
+            String base64Content = encodeFileToBase64(file);
+            String path = IMAGE_PATH + "/" + filename;
+            String apiUrl = String.format("%s/repos/%s/contents/%s", API_BASE, repo, path);
+
+            // Check if file exists (to get SHA for update)
+            String existingSha = getExistingFileSha(apiUrl);
+
+            String jsonBody;
+            if (existingSha != null) {
+                jsonBody = String.format(
+                    "{\"message\":\"Update lunch image\",\"content\":\"%s\",\"branch\":\"%s\",\"sha\":\"%s\"}",
+                    base64Content, BRANCH, existingSha
+                );
+            } else {
+                jsonBody = String.format(
+                    "{\"message\":\"Add lunch image\",\"content\":\"%s\",\"branch\":\"%s\"}",
+                    base64Content, BRANCH
+                );
+            }
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
+            conn.setRequestMethod("PUT");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Authorization", "Bearer " + token);
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
+            }
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode != 200 && responseCode != 201) {
+                String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+                throw new IOException("GitHub upload failed (" + responseCode + "): " + error);
+            }
+            System.out.println("  GitHub upload successful: " + path);
+        }
+
+        /**
+         * Raw URL 생성
+         */
+        String getRawUrl(String filename) {
+            return String.format("https://raw.githubusercontent.com/%s/%s/%s/%s",
+                repo, BRANCH, IMAGE_PATH, filename);
+        }
+
+        private String getExistingFileSha(String apiUrl) {
+            try {
+                HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
+                conn.setRequestMethod("GET");
+                conn.setRequestProperty("Authorization", "Bearer " + token);
+                conn.setRequestProperty("Accept", "application/vnd.github+json");
+
+                if (conn.getResponseCode() == 200) {
+                    String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                    return JsonUtils.extract(response, "sha");
+                }
+            } catch (IOException e) {
+                // File doesn't exist, ignore
+            }
+            return null;
+        }
+
+        private String encodeFileToBase64(File file) throws IOException {
+            try (FileInputStream fis = new FileInputStream(file)) {
+                byte[] bytes = new byte[(int) file.length()];
+                fis.read(bytes);
+                return java.util.Base64.getEncoder().encodeToString(bytes);
+            }
+        }
+    }
+
+    /**
+     * Google Chat Webhook Client - 카드 형식으로 메시지 전송
+     */
+    static class GoogleChatClient {
+        private final String webhookUrl;
+
+        GoogleChatClient(String webhookUrl) {
+            this.webhookUrl = webhookUrl;
+        }
+
+        /**
+         * 이미지와 텍스트가 포함된 카드 메시지 전송
+         */
+        void sendCard(String imageUrl, String title, String text) throws IOException {
+            // Escape text for JSON
+            String escapedText = text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+            String escapedTitle = title.replace("\\", "\\\\").replace("\"", "\\\"");
+
+            String jsonBody = String.format("""
+                {
+                  "cardsV2": [{
+                    "cardId": "lunchCard",
+                    "card": {
+                      "header": {
+                        "title": "%s",
+                        "imageUrl": "%s",
+                        "imageType": "SQUARE"
+                      },
+                      "sections": [{
+                        "widgets": [{
+                          "image": {
+                            "imageUrl": "%s"
+                          }
+                        }, {
+                          "textParagraph": {
+                            "text": "%s"
+                          }
+                        }]
+                      }]
+                    }
+                  }]
+                }
+                """, escapedTitle, imageUrl, imageUrl, escapedText);
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(webhookUrl).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
+            }
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode != 200) {
+                String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+                throw new IOException("Google Chat send failed (" + responseCode + "): " + error);
+            }
+            System.out.println("  Google Chat message sent successfully");
         }
     }
 }
