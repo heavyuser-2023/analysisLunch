@@ -6,6 +6,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
@@ -18,8 +19,14 @@ public class SlackSender {
     private static final String BLOG_URL = "https://m.blog.naver.com/yjm3038/222191646255";
     private static final String TEMP_ORIGINAL_FILE = "temp_original.png";
     private static final String TEMP_PROCESSED_FILE = "lunch_menu_white_bg.jpg";
+    private static final String HASH_FILE = "menu_hash.txt";
 
     public static void main(String[] args) {
+        System.out.println("🚀 프로그램 시작: 점심 메뉴 확인");
+        runTask();
+    }
+
+    public static void runTask() {
         try {
             Config config = Config.load();
             
@@ -34,6 +41,18 @@ public class SlackSender {
             System.out.println("- Downloading image...");
             File originalFile = new File(TEMP_ORIGINAL_FILE);
             ImageProcessor.download(imageUrl, originalFile);
+
+            // [NEW] Hash Check Logic
+            String currentHash = calculateFileHash(originalFile);
+            String lastHash = loadLastHash();
+
+            if (currentHash.equals(lastHash)) {
+                System.out.println("✅ 이미지가 변경되지 않았습니다. 작업을 중단합니다. (Hash: " + currentHash + ")");
+                return;
+            }
+
+            System.out.println("🔄 이미지가 변경되었습니다. (New Hash: " + currentHash + ")");
+            saveHash(currentHash);
             
             // 3. Process Image (Remove Transparency)
             System.out.println("- Processing image (adding white background)...");
@@ -76,7 +95,6 @@ public class SlackSender {
         } catch (Exception e) {
             System.err.println("❌ Error: " + e.getMessage());
             e.printStackTrace();
-            System.exit(1);
         } finally {
             // Cleanup temp files
             deleteFile(TEMP_ORIGINAL_FILE);
@@ -89,6 +107,44 @@ public class SlackSender {
         File file = new File(path);
         if (file.exists()) {
             file.delete();
+        }
+    }
+
+    private static String loadLastHash() {
+        File file = new File(HASH_FILE);
+        if (!file.exists()) return null;
+        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+            return br.readLine();
+        } catch (IOException e) {
+            System.err.println("Failed to read hash file: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static void saveHash(String hash) {
+        try (FileWriter fw = new FileWriter(HASH_FILE)) {
+            fw.write(hash);
+        } catch (IOException e) {
+            System.err.println("Failed to write hash file: " + e.getMessage());
+        }
+    }
+
+    private static String calculateFileHash(File file) throws IOException {
+        try (FileInputStream fis = new FileInputStream(file)) {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] byteArray = new byte[1024];
+            int bytesCount;
+            while ((bytesCount = fis.read(byteArray)) != -1) {
+                digest.update(byteArray, 0, bytesCount);
+            }
+            byte[] bytes = digest.digest();
+            StringBuilder sb = new StringBuilder();
+            for (byte b : bytes) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            throw new IOException("Hash calculation failed", e);
         }
     }
 
