@@ -244,14 +244,15 @@ public class SlackSender {
                 === 식판 구조 ===
                 - 한국식 플라스틱 식판 (약한 회색 바탕, 검은 점 산재)
                 - 오른쪽: 수저/젓가락 칸 + 상단에 소스용 작은 칸
-                - 하단: 밥칸(네모) + 국칸(동그라미, 별도 그릇)
+                - 하단: 밥칸(네모) + 국칸(동그라미, 별도 하얀색 불투명 플라스틱 그릇)
                 - 상단: 반찬 3칸 (좌우 동그라미, 가운데는 네모칸이고 좌우로 2등분)
 
                 === 촬영 조건 ===
                 - Top-down 시점, 흰색 테이블 배경
                 - 자연광, 사실적 질감, 고해상도
                 - 반찬이 많으면 한 칸에 여러 음식 배치 가능
-                - 음식을 담은 모습이 사람이 실제 담은것 처럼 자연스럽게 보이도록 설정해줘
+                - 식판에 음식이 담긴 모습이 사람이 실제 담은것 처럼
+                  (밥, 반찬이 정형적이지 않게 배치, 반찬이 조금 넘치기도 하고 ) 
 
                 ⛔⛔⛔ 절대 금지 (위반 시 실패) ⛔⛔⛔
                 1. 정의된 6칸 외 추가 칸 생성 금지
@@ -618,7 +619,12 @@ public class SlackSender {
                       "sections": [{
                         "widgets": [{
                           "image": {
-                            "imageUrl": "%s"
+                            "imageUrl": "%s",
+                            "onClick": {
+                              "openLink": {
+                                "url": "%s"
+                              }
+                            }
                           }
                         }, {
                           "textParagraph": {
@@ -629,7 +635,7 @@ public class SlackSender {
                     }
                   }]
                 }
-                """, escapedTitle, imageUrl, imageUrl, escapedText);
+                """, escapedTitle, imageUrl, imageUrl, imageUrl, escapedText);
 
             HttpURLConnection conn = (HttpURLConnection) new URL(webhookUrl).openConnection();
             conn.setRequestMethod("POST");
