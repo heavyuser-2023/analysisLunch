@@ -54,6 +54,11 @@ public class SlackSender {
             System.out.println("🔄 이미지가 변경되었습니다. (New Hash: " + currentHash + ")");
             saveHash(currentHash);
             
+            // [NEW] Upload hash to GitHub logic
+            System.out.println("- Uploading menu_hash.txt to GitHub...");
+            GitHubUploader hashUploader = new GitHubUploader(config.githubToken, config.githubRepo);
+            hashUploader.uploadTextFile(currentHash, HASH_FILE);
+            
             // 3. Process Image (Remove Transparency)
             System.out.println("- Processing image (adding white background)...");
             File processedFile = new File(TEMP_PROCESSED_FILE);
@@ -608,6 +613,49 @@ public class SlackSender {
                 throw new IOException("GitHub upload failed (" + responseCode + "): " + error);
             }
             System.out.println("  GitHub upload successful: " + path);
+        }
+
+        /**
+         * 텍스트 파일(해시 등)을 저장소 루트에 업로드
+         */
+        void uploadTextFile(String content, String filename) throws IOException {
+            String base64Content = java.util.Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8));
+            String apiUrl = String.format("%s/repos/%s/contents/%s", API_BASE, repo, filename);
+
+            // Check if file exists (to get SHA for update)
+            String existingSha = getExistingFileSha(apiUrl);
+
+            String jsonBody;
+            if (existingSha != null) {
+                jsonBody = String.format(
+                    "{\"message\":\"Update menu hash\",\"content\":\"%s\",\"branch\":\"%s\",\"sha\":\"%s\"}",
+                    base64Content, BRANCH, existingSha
+                );
+            } else {
+                jsonBody = String.format(
+                    "{\"message\":\"Create menu hash\",\"content\":\"%s\",\"branch\":\"%s\"}",
+                    base64Content, BRANCH
+                );
+            }
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
+            conn.setRequestMethod("PUT");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Authorization", "Bearer " + token);
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
+            }
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode != 200 && responseCode != 201) {
+                String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+                throw new IOException("GitHub upload failed (" + responseCode + "): " + error);
+            }
+            System.out.println("  GitHub upload successful: " + filename);
         }
 
         /**
