@@ -32,5 +32,5 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
           GOOGLE_CHAT_WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
         run: |
-          javac SlackSender.java
-          java SlackSender
+          javac -d out -sourcepath src src/analysislunch/Main.java
+          java -cp out analysislunch.Main
