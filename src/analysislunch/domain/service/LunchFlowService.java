@@ -63,11 +63,8 @@ public class LunchFlowService {
             }
 
             System.out.println("🔄 이미지가 변경되었습니다. (New Hash: " + currentHash + ")");
-            imageService.saveHash(currentHash);
+            // Hash saving moved to the end of the process
 
-            // Upload hash to GitHub logic
-            System.out.println("- Uploading menu_hash.txt to GitHub...");
-            gitHubClient.uploadTextFile(currentHash, HASH_FILE);
 
             // 3. Process Image (Remove Transparency)
             System.out.println("- Processing image (adding white background)...");
@@ -100,6 +97,12 @@ public class LunchFlowService {
 
             System.out.println("- Sending to Google Chat...");
             googleChatClient.sendCard(githubImageUrl, title, initialComment);
+
+            // 8. Save and Upload Hash (Only if everything succeeded)
+            System.out.println("🔄 All tasks completed. Updating hash...");
+            imageService.saveHash(currentHash);
+            System.out.println("- Uploading menu_hash.txt to GitHub...");
+            gitHubClient.uploadTextFile(currentHash, HASH_FILE);
 
             System.out.println("✅ Task completed successfully.");
 
