@@ -78,6 +78,7 @@ public class GeminiClient {
             1. 정의된 6칸 외 추가 칸 생성 금지
             2. 이미지 위 텍스트/라벨/음식명 표시 절대 금지
             3. 식판 외부에 음식/장식 배치 금지
+            4. 메뉴 목록 중 이미지 생성 누락 금지
             """, menuText);
         
         String escapedPrompt = prompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
