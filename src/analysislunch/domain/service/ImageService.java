@@ -83,4 +83,121 @@ public class ImageService {
             file.delete();
         }
     }
+
+    /**
+     * 칼로리 정보를 담은 독립적인 카드 이미지 생성
+     */
+    public void createCalorieCard(String calorieInfo, File output) throws IOException {
+        // 1. Parsing Logic
+        java.util.List<String[]> rows = new java.util.ArrayList<>();
+        String totalLine = "";
+        
+        String[] lines = calorieInfo.split("\n");
+        for (String line : lines) {
+            line = line.trim();
+            if (line.isEmpty() || line.startsWith("|---") || line.startsWith("|-")) continue;
+            
+            if (line.startsWith("|")) {
+                String[] parts = line.split("\\|");
+                if (parts.length >= 3) {
+                     String menu = parts[1].trim();
+                     String cal = parts[2].trim();
+                     if (!menu.equals("메뉴명") && !menu.contains("---")) {
+                         rows.add(new String[]{menu, cal});
+                     }
+                }
+            } else if (line.contains("총 예상 칼로리")) {
+                totalLine = line.replace("**", "").trim();
+            }
+        }
+        
+        // 2. Load Font
+        java.awt.Font font;
+        try {
+            font = java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, new File("fonts/NanumGothic.ttf"));
+        } catch (java.awt.FontFormatException e) {
+            System.err.println("Font format error, using default: " + e.getMessage());
+            font = new java.awt.Font("SansSerif", java.awt.Font.PLAIN, 12);
+        }
+
+        // 3. Layout Calculation
+        int width = 1000;
+        int rowHeight = 60;
+        int headerHeight = 120;
+        int footerHeight = 100;
+        int contentHeight = rows.size() * rowHeight;
+        int height = headerHeight + contentHeight + footerHeight;
+        
+        BufferedImage cardImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g2d = cardImage.createGraphics();
+        
+        // High Quality Rendering Hints
+        g2d.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING, java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g2d.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+        g2d.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+
+        // Background
+        g2d.setColor(new Color(33, 37, 41)); // Dark Slate
+        g2d.fillRect(0, 0, width, height);
+        
+        // Header Area
+        g2d.setColor(new Color(44, 48, 52)); // Slightly lighter header
+        g2d.fillRect(0, 0, width, headerHeight);
+        
+        // Header Text
+        g2d.setColor(new Color(255, 193, 7)); // Amber color
+        g2d.setFont(font.deriveFont(java.awt.Font.BOLD, 36f));
+        g2d.drawString("\uD83D\uDCCA 오늘의 영양 분석", 50, 75);
+        
+        g2d.setColor(new Color(173, 181, 189)); // Grey subtext
+        g2d.setFont(font.deriveFont(java.awt.Font.PLAIN, 18f));
+        // Right-alignedish
+        g2d.drawString("AI가 분석한 예상 칼로리 정보입니다", width - 330, 75);
+
+        // Table Content
+        int y = headerHeight + 40;
+        int xMenu = 80;
+        int xCal = 750;
+        
+        // Font setup for rows
+        java.awt.Font menuFont = font.deriveFont(java.awt.Font.PLAIN, 24f);
+        java.awt.Font calFont = font.deriveFont(java.awt.Font.BOLD, 24f);
+
+        for (int i = 0; i < rows.size(); i++) {
+            String[] row = rows.get(i);
+            
+            // Alternating row background (very subtle)
+            if (i % 2 == 0) {
+                g2d.setColor(new Color(255, 255, 255, 10)); // Very faint white overlay
+                g2d.fillRect(30, y - 35, width - 60, rowHeight);
+            }
+
+            g2d.setColor(new Color(248, 249, 250)); // White text
+            g2d.setFont(menuFont);
+            g2d.drawString(row[0], xMenu, y);
+            
+            g2d.setColor(new Color(13, 202, 240)); // Cyan text for calories
+            g2d.setFont(calFont);
+            // Right align logic for calories could be added, but left align at xCal is simple
+            g2d.drawString(row[1], xCal, y);
+            
+            y += rowHeight;
+        }
+        
+        // Separator line before total
+        g2d.setColor(new Color(73, 80, 87));
+        g2d.setStroke(new java.awt.BasicStroke(2));
+        g2d.drawLine(50, height - footerHeight, width - 50, height - footerHeight);
+        
+        // Total Section
+        if (!totalLine.isEmpty()) {
+            g2d.setColor(new Color(255, 99, 71)); // Tomato/Red color
+            g2d.setFont(font.deriveFont(java.awt.Font.BOLD, 32f));
+            // Centered-ish or right-aligned layout
+            g2d.drawString(totalLine, xMenu, height - 35);
+        }
+        
+        g2d.dispose();
+        ImageIO.write(cardImage, "png", output);
+    }
 }

@@ -119,4 +119,50 @@ public class GeminiClient {
             return Base64.getEncoder().encodeToString(bytes);
         }
     }
+
+    /**
+     * 생성된 음식 이미지를 기반으로 칼로리 분석
+     * 메뉴 텍스트를 참고하여 정확한 음식 이름을 사용하도록 함
+     */
+    public String analyzeCalories(File imageFile, String menuText) throws IOException {
+        String base64Image = encodeImageToBase64(imageFile);
+        
+        String prompt = String.format("""
+            이 이미지는 다음 메뉴로 구성된 점심 도시락(식판) 사진입니다:
+            %s
+            
+            위 메뉴 목록에 있는 '모든' 항목들에 대해 예상 칼로리를 분석해서 표(Table) 형태로 정리해주세요.
+            
+            [중요 규칙]
+            1. 표의 '메뉴명'은 위에서 제공된 메뉴 이름을 그대로 사용해야 합니다. (임의로 바꾸거나 생략하지 마세요)
+            2. 사진에 보이지 않거나 불분명하더라도, 메뉴 목록에 있다면 포함시켜주세요.
+            3. 반찬이 여러 개라면 모든 반찬을 나열해주세요.
+            
+            출력 형식:
+            | 메뉴명 | 예상 칼로리 |
+            |---|---|
+            | 쌀밥 | 300kcal |
+            ...
+            
+            마지막에는 **총 예상 칼로리: XXXkcal** 형태로 합계를 적어주세요.
+            설명은 생략하고 표와 합계만 간단히 출력하세요.
+            """, menuText);
+            
+        String escapedPrompt = prompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+
+        String jsonBody = "{"
+            + "\"contents\": [{"
+            + "\"parts\": ["
+            + "{\"text\": \"" + escapedPrompt + "\"},"
+            + "{\"inline_data\": {\"mime_type\": \"image/png\", \"data\": \"" + base64Image + "\"}}"
+            + "]"
+            + "}]"
+            + "}";
+
+        // Vision 기능이 있는 모델 사용 (extractMenuInfo와 동일한 endpoint 재사용 가능)
+        String response = HttpUtils.postJson(API_URL_TEXT + "?key=" + apiKey, null, jsonBody);
+        System.out.println("Calorie Analysis Response received");
+
+        return JsonUtils.extractGeminiText(response);
+    }
 }
