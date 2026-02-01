@@ -24,6 +24,7 @@ jobs:
 
       - name: Authenticate to Google Cloud
         id: auth
+        if: ${{ !env.ACT }}
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -40,6 +41,7 @@ jobs:
           # GitHub Secrets에서 가져와 환경 변수로 설정
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
