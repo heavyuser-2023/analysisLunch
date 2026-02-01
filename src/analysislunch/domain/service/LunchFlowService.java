@@ -58,7 +58,7 @@ public class LunchFlowService {
             String lastHash = imageService.loadLastHash();
 
             if (currentHash.equals(lastHash)) {
-                System.out.println("✅ 이미지가 변경되지 않았습니다. 작업을 중단합니다. (Hash: " + currentHash + ")");
+                System.out.println("✅ 이미지가 변경되지 않았습니다. 작업을 중단합니다!!! (Hash: " + currentHash + ")");
                 return;
             }
 
