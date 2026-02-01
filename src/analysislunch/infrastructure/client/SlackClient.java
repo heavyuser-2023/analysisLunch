@@ -2,6 +2,9 @@ package analysislunch.infrastructure.client;
 
 import analysislunch.utils.HttpUtils;
 import analysislunch.utils.JsonUtils;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import java.io.File;
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -11,6 +14,7 @@ public class SlackClient {
     private static final String API_GET_URL = "https://slack.com/api/files.getUploadURLExternal";
     private static final String API_COMPLETE = "https://slack.com/api/files.completeUploadExternal";
     private static final String API_POST_MESSAGE = "https://slack.com/api/chat.postMessage";
+    private static final Gson GSON = new Gson();
     private final String token;
 
     public SlackClient(String token) {
@@ -22,18 +26,13 @@ public class SlackClient {
     }
 
     public String postMessage(String channelId, String text, String threadTs) throws IOException {
-        String escapedText = text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
-        StringBuilder jsonBody = new StringBuilder();
-        jsonBody.append("{\"channel\":\"")
-            .append(channelId)
-            .append("\",\"text\":\"")
-            .append(escapedText)
-            .append("\"");
+        JsonObject body = new JsonObject();
+        body.addProperty("channel", channelId);
+        body.addProperty("text", text);
         if (threadTs != null && !threadTs.isEmpty()) {
-            jsonBody.append(",\"thread_ts\":\"").append(threadTs).append("\"");
+            body.addProperty("thread_ts", threadTs);
         }
-        jsonBody.append("}");
-        String response = HttpUtils.postJson(API_POST_MESSAGE, token, jsonBody.toString());
+        String response = HttpUtils.postJson(API_POST_MESSAGE, token, GSON.toJson(body));
         if (!response.contains("\"ok\":true")) {
             throw new IOException("Failed to post message: " + response);
         }
@@ -45,33 +44,33 @@ public class SlackClient {
     }
 
     public String postImageMessage(String channelId, String text, String imageUrl, String threadTs) throws IOException {
-        String escapedText = text == null ? "" : text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
-        String escapedUrl = imageUrl.replace("\\", "\\\\").replace("\"", "\\\"");
-        StringBuilder blocks = new StringBuilder();
-        blocks.append("[");
-        if (!escapedText.isEmpty()) {
-            blocks.append("{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"")
-                .append(escapedText)
-                .append("\"}},");
-        }
-        blocks.append("{\"type\":\"image\",\"image_url\":\"")
-            .append(escapedUrl)
-            .append("\",\"alt_text\":\"lunch image\"}");
-        blocks.append("]");
+        String messageText = (text == null || text.isEmpty()) ? "lunch image" : text;
 
-        StringBuilder jsonBody = new StringBuilder();
-        jsonBody.append("{\"channel\":\"")
-            .append(channelId)
-            .append("\",\"text\":\"")
-            .append(escapedText.isEmpty() ? "lunch image" : escapedText)
-            .append("\",\"blocks\":")
-            .append(blocks);
+        JsonArray blocks = new JsonArray();
+        if (text != null && !text.isEmpty()) {
+            JsonObject section = new JsonObject();
+            section.addProperty("type", "section");
+            JsonObject sectionText = new JsonObject();
+            sectionText.addProperty("type", "mrkdwn");
+            sectionText.addProperty("text", text);
+            section.add("text", sectionText);
+            blocks.add(section);
+        }
+        JsonObject imageBlock = new JsonObject();
+        imageBlock.addProperty("type", "image");
+        imageBlock.addProperty("image_url", imageUrl);
+        imageBlock.addProperty("alt_text", "lunch image");
+        blocks.add(imageBlock);
+
+        JsonObject body = new JsonObject();
+        body.addProperty("channel", channelId);
+        body.addProperty("text", messageText);
+        body.add("blocks", blocks);
         if (threadTs != null && !threadTs.isEmpty()) {
-            jsonBody.append(",\"thread_ts\":\"").append(threadTs).append("\"");
+            body.addProperty("thread_ts", threadTs);
         }
-        jsonBody.append("}");
 
-        String response = HttpUtils.postJson(API_POST_MESSAGE, token, jsonBody.toString());
+        String response = HttpUtils.postJson(API_POST_MESSAGE, token, GSON.toJson(body));
         if (!response.contains("\"ok\":true")) {
             throw new IOException("Failed to post image message: " + response);
         }
@@ -120,24 +119,20 @@ public class SlackClient {
     }
 
     private String callCompleteUpload(String fileId, String title, String initialComment, String channelId, String threadTs) throws IOException {
-        // JSON Escaping for initialComment
-        String escapedComment = initialComment.replace("\"", "\\\"").replace("\n", "\\n");
-        String escapedTitle = title.replace("\"", "\\\"");
-        
-        StringBuilder jsonBody = new StringBuilder();
-        jsonBody.append("{\"files\":[{\"id\":\"")
-            .append(fileId)
-            .append("\",\"title\":\"")
-            .append(escapedTitle)
-            .append("\"}],\"channel_id\":\"")
-            .append(channelId)
-            .append("\",\"initial_comment\":\"")
-            .append(escapedComment)
-            .append("\"");
+        JsonObject file = new JsonObject();
+        file.addProperty("id", fileId);
+        file.addProperty("title", title);
+        JsonArray files = new JsonArray();
+        files.add(file);
+
+        JsonObject body = new JsonObject();
+        body.add("files", files);
+        body.addProperty("channel_id", channelId);
+        body.addProperty("initial_comment", initialComment);
         if (threadTs != null && !threadTs.isEmpty()) {
-            jsonBody.append(",\"thread_ts\":\"").append(threadTs).append("\"");
+            body.addProperty("thread_ts", threadTs);
         }
-        jsonBody.append("}");
-        return HttpUtils.postJson(API_COMPLETE, token, jsonBody.toString());
+
+        return HttpUtils.postJson(API_COMPLETE, token, GSON.toJson(body));
     }
 }

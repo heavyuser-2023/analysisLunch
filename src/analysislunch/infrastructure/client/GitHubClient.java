@@ -1,6 +1,8 @@
 package analysislunch.infrastructure.client;
 
 import analysislunch.utils.JsonUtils;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -14,6 +16,7 @@ public class GitHubClient {
     private static final String API_BASE = "https://api.github.com";
     private static final String BRANCH = "main";
     private static final String IMAGE_PATH = "images";
+    private static final Gson GSON = new Gson();
     private final String token;
     private final String repo;
 
@@ -33,20 +36,15 @@ public class GitHubClient {
         // Check if file exists (to get SHA for update)
         String existingSha = getExistingFileSha(apiUrl);
 
-        String jsonBody;
+        JsonObject body = new JsonObject();
+        body.addProperty("message", existingSha != null ? "Update lunch image" : "Add lunch image");
+        body.addProperty("content", base64Content);
+        body.addProperty("branch", BRANCH);
         if (existingSha != null) {
-            jsonBody = String.format(
-                "{\"message\":\"Update lunch image\",\"content\":\"%s\",\"branch\":\"%s\",\"sha\":\"%s\"}",
-                base64Content, BRANCH, existingSha
-            );
-        } else {
-            jsonBody = String.format(
-                "{\"message\":\"Add lunch image\",\"content\":\"%s\",\"branch\":\"%s\"}",
-                base64Content, BRANCH
-            );
+            body.addProperty("sha", existingSha);
         }
 
-        uploadToGitHub(apiUrl, jsonBody);
+        uploadToGitHub(apiUrl, GSON.toJson(body));
         System.out.println("  GitHub upload successful: " + path);
     }
 
@@ -60,20 +58,15 @@ public class GitHubClient {
         // Check if file exists (to get SHA for update)
         String existingSha = getExistingFileSha(apiUrl);
 
-        String jsonBody;
+        JsonObject body = new JsonObject();
+        body.addProperty("message", existingSha != null ? "Update menu hash" : "Create menu hash");
+        body.addProperty("content", base64Content);
+        body.addProperty("branch", BRANCH);
         if (existingSha != null) {
-            jsonBody = String.format(
-                "{\"message\":\"Update menu hash\",\"content\":\"%s\",\"branch\":\"%s\",\"sha\":\"%s\"}",
-                base64Content, BRANCH, existingSha
-            );
-        } else {
-            jsonBody = String.format(
-                "{\"message\":\"Create menu hash\",\"content\":\"%s\",\"branch\":\"%s\"}",
-                base64Content, BRANCH
-            );
+            body.addProperty("sha", existingSha);
         }
 
-        uploadToGitHub(apiUrl, jsonBody);
+        uploadToGitHub(apiUrl, GSON.toJson(body));
         System.out.println("  GitHub upload successful: " + filename);
     }
 
