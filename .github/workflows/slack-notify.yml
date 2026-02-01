@@ -36,13 +36,8 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install Gradle
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl unzip
-          curl -sL https://services.gradle.org/distributions/gradle-8.10.2-bin.zip -o gradle.zip
-          unzip -q gradle.zip -d "$RUNNER_TEMP/gradle"
-          echo "$RUNNER_TEMP/gradle/gradle-8.10.2/bin" >> "$GITHUB_PATH"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Compile and Run Java
         env:
