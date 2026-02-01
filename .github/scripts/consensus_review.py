@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import hashlib
 import google.generativeai as genai
 import requests
 from collections import Counter
@@ -28,9 +29,12 @@ async def get_gemini_review(instance_id, diff, temperature):
     2. 결과는 반드시 아래 JSON 형식으로만 응답하세요. (마크다운 코드 블록 제외, 순수 JSON만)
     {{
       "reviews": [
-        {{"line": line_number, "issue": "이슈 설명", "severity": "CRITICAL|MAJOR|MINOR"}}
+        {{"file": "path/from/diff", "line": line_number, "side": "RIGHT|LEFT", "issue": "이슈 설명", "severity": "CRITICAL|MAJOR|MINOR"}}
       ]
     }}
+    3. file은 diff의 파일 경로(예: "src/foo/Bar.java")를 사용하세요. 파일 헤더(+++ b/...) 또는 (--- a/...)를 참고하세요.
+    4. side는 diff 기준으로 RIGHT(추가/수정된 라인), LEFT(삭제된 라인) 중 하나를 사용하세요.
+    5. line은 side 기준의 라인 번호를 사용하세요. (RIGHT는 신규 라인, LEFT는 기존 라인)
     
     [Diff]
     {diff}
@@ -54,6 +58,35 @@ def get_pr_diff():
     response = requests.get(url, headers=headers)
     return response.text
 
+def build_diff_link_map(diff_text):
+    """PR diff 텍스트에서 파일별 diff hash 매핑 생성 (rename/삭제/추가 대응)"""
+    file_to_hash = {}
+    for line in diff_text.splitlines():
+        if line.startswith("diff --git "):
+            parts = line.split(" ")
+            if len(parts) >= 4:
+                a_path = parts[2]
+                b_path = parts[3]
+                if a_path.startswith("a/") and b_path.startswith("b/"):
+                    key = f"{a_path} {b_path}"
+                    diff_hash = hashlib.sha1(key.encode("utf-8")).hexdigest()
+                    a_file = a_path[2:]
+                    b_file = b_path[2:]
+                    if a_file != "dev/null":
+                        file_to_hash[a_file] = diff_hash
+                    if b_file != "dev/null":
+                        file_to_hash[b_file] = diff_hash
+    return file_to_hash
+
+def get_pr_info():
+    """PR 메타데이터(HEAD SHA 등) 조회"""
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/pulls/{PR_NUMBER}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        return {}
+    return response.json()
+
 def post_github_comment(comment):
     """PR에 최종 결과 댓글 작성"""
     url = f"https://api.github.com/repos/{GITHUB_REPO}/issues/{PR_NUMBER}/comments"
@@ -61,9 +94,12 @@ def post_github_comment(comment):
     requests.post(url, headers=headers, json={"body": comment})
 
 async def main():
+    pr_info = get_pr_info()
+    head_sha = pr_info.get("head", {}).get("sha")
     diff = get_pr_diff()
     if not diff:
         return
+    diff_link_map = build_diff_link_map(diff)
 
     # 1. 3개의 인스턴스를 병렬로 실행 (온도를 0.2, 0.7, 1.0으로 다르게 설정)
     tasks = [
@@ -76,15 +112,22 @@ async def main():
     
     # 2. 다수결 로직 (Consensus)
     flat_reviews = [item for sublist in all_results for item in sublist]
-    line_counts = Counter([r['line'] for r in flat_reviews])
+    line_counts = Counter([(r.get('file', 'unknown'), r.get('line'), r.get('side', 'RIGHT')) for r in flat_reviews])
     
     consensus_issues = []
-    for line, count in line_counts.items():
+    for (file_path, line, side), count in line_counts.items():
         # 3개 중 2개 이상의 인스턴스가 지적한 경우만 채택
         if count >= 2:
-            relevant_reviews = [r for r in flat_reviews if r['line'] == line]
+            relevant_reviews = [
+                r for r in flat_reviews
+                if r.get('file', 'unknown') == file_path
+                and r.get('line') == line
+                and r.get('side', 'RIGHT') == side
+            ]
             consensus_issues.append({
+                "file": file_path,
                 "line": line,
+                "side": side,
                 "count": count,
                 "issue": relevant_reviews[0]['issue'],
                 "severity": relevant_reviews[0]['severity']
@@ -95,9 +138,24 @@ async def main():
         report = "## 🤖 Gemini 다수결 코드 리뷰 결과\n"
         report += "> 3개의 Gemini 인스턴스가 교차 검증을 수행했습니다. (2표 이상 득표 항목만 표시)\n\n"
         
-        for issue in sorted(consensus_issues, key=lambda x: x['line']):
+        for issue in sorted(consensus_issues, key=lambda x: (x.get('file', ''), x['line'], x.get('side', 'RIGHT'))):
             severity_emoji = "🚨" if issue['severity'] == "CRITICAL" else "⚠️"
-            report += f"- {severity_emoji} **Line {issue['line']}**: {issue['issue']} ({issue['count']}/3 동의)\n"
+            file_path = issue.get('file', 'unknown')
+            line = issue['line']
+            file_link = ""
+            side = issue.get('side', 'RIGHT')
+            side_anchor = "R" if side == "RIGHT" else "L"
+            if file_path != "unknown":
+                diff_hash = diff_link_map.get(file_path)
+                if diff_hash:
+                    file_link = f"https://github.com/{GITHUB_REPO}/pull/{PR_NUMBER}/files#diff-{diff_hash}{side_anchor}{line}"
+                elif head_sha:
+                    file_link = f"https://github.com/{GITHUB_REPO}/blob/{head_sha}/{file_path}#L{line}"
+                else:
+                    file_link = f"https://github.com/{GITHUB_REPO}/blob/main/{file_path}#L{line}"
+                report += f"- {severity_emoji} **[{file_path}:{line}]({file_link})**: {issue['issue']} ({issue['count']}/3 동의)\n"
+            else:
+                report += f"- {severity_emoji} **{file_path}:{line}**: {issue['issue']} ({issue['count']}/3 동의)\n"
         
         post_github_comment(report)
     else:
