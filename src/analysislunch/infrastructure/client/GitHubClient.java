@@ -47,7 +47,7 @@ public class GitHubClient {
         }
 
         uploadToGitHub(apiUrl, jsonBody);
-        System.out.println("  GitHub upload successful: " + path);
+        System.out.println("   GitHub upload successful: " + path);
     }
 
     /**
