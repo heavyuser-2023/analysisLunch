@@ -12,12 +12,22 @@ on:
 jobs:
   send-slack:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Workload Identity Federation에 필요
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }} # Push 권한을 위해 PAT 사용
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -30,10 +40,12 @@ jobs:
           # GitHub Secrets에서 가져와 환경 변수로 설정
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
           GITHUB_REPO: ${{ github.repository }}
           GOOGLE_CHAT_WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
         run: |
           javac -d out -sourcepath src src/analysislunch/Main.java
           java -cp out analysislunch.Main
+
