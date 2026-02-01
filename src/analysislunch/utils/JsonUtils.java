@@ -34,4 +34,18 @@ public class JsonUtils {
         }
         return null;
     }
+
+    /**
+     * Slack 파일 업로드 응답에서 공유 메시지 ts 추출
+     */
+    public static String eextractSlackShareTs(String json) {
+        int sharesIndex = json.indexOf("\"shares\"");
+        if (sharesIndex < 0) {
+            return null;
+        }
+        String sharesJson = json.substring(sharesIndex);
+        Pattern pattern = Pattern.compile("(?<!thread_)\"ts\"\\s*:\\s*\"([0-9.]+)\"");
+        Matcher matcher = pattern.matcher(sharesJson);
+        return matcher.find() ? matcher.group(1) : null;
+    }
 }

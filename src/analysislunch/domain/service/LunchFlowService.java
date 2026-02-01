@@ -93,48 +93,49 @@ public class LunchFlowService {
             File calorieCardFile = new File("calorie_card.png");
             imageService.createCalorieCard(calorieAnalysis, calorieCardFile);
 
-            // 8. Upload to Slack (Two separate uploads)
-            System.out.println("- Uploading to Slack...");
+            // 8. Upload to GitHub (for Slack/Google Chat image URLs)
+            System.out.println("- Uploading images to GitHub...");
             String title = menuInfo.date() + " - " + "점심 메뉴";
-            
-            // 8-1. Food Image
-            System.out.println("  - Sending Food Image to Slack...");
-            String comment1 = "📢 *" + title + "*" + "\n\n AI가 생성한 이미지 입니다. 실제 음식과 다를 수 있습니다." + "\n\n" + menuInfo.menu();
-            slackClient.uploadFile(config.getChannelId(), generatedImage, title, comment1);
-            System.out.println("  ✅ Fast-Check: Food Image uploaded to Slack successfully.");
-            
-            // Wait to ensure order
-            try { Thread.sleep(1000); } catch (InterruptedException ie) {}
-
-            // 8-2. Calorie Card
-            System.out.println("  - Sending Calorie Card to Slack...");
-            String comment2 = "📊 *상세 칼로리 분석표*";
-            slackClient.uploadFile(config.getChannelId(), calorieCardFile, "칼로리 분석", comment2);
-            System.out.println("  ✅ Calorie Card uploaded to Slack successfully.");
-
-            // 9. Upload to GitHub & Google Chat
-            System.out.println("- Uploading to GitHub & Google Chat...");
-            
-            // 9-1. Food Image
             String foodImageName = "lunch_food_" + System.currentTimeMillis() + ".png";
+            String cardImageName = "lunch_card_" + System.currentTimeMillis() + ".png";
             gitHubClient.uploadImage(generatedImage, foodImageName);
+            gitHubClient.uploadImage(calorieCardFile, cardImageName);
             String foodImageUrl = gitHubClient.getRawUrl(foodImageName);
+            String cardImageUrl = gitHubClient.getRawUrl(cardImageName);
+
+            // 9. Upload to Slack (Food image as parent, calorie as reply)
+            System.out.println("- Uploading to Slack...");
+            String slackThreadTs = slackClient.postImageMessage(
+                config.getChannelId(),
+                "📢 *" + title + "*" + "\n\n AI가 생성한 이미지 입니다. 실제 음식과 다를 수 있습니다." + "\n\n" + menuInfo.menu(),
+                foodImageUrl,
+                null
+            );
+            if (slackThreadTs == null) {
+                System.out.println("  WARN: Slack parent thread ts is missing. Uploads will be separate.");
+            }
             
-            googleChatClient.sendCard(foodImageUrl, title, comment1);
+            // 9-1. Calorie Card (reply)
+            String comment2 = "📊 *상세 칼로리 분석표*";
+            slackClient.postImageMessage(config.getChannelId(), comment2, cardImageUrl, slackThreadTs);
+            System.out.println("  ✅ Slack thread posted successfully.");
+
+            // 10. Upload to Google Chat
+            System.out.println("- Uploading to Google Chat...");
+            String chatThreadKey = "lunch-" + System.currentTimeMillis();
+            
+            // 10-1. Food Image
+            googleChatClient.sendCard(foodImageUrl, title, "📢 *" + title + "*" + "\n\n AI가 생성한 이미지 입니다. 실제 음식과 다를 수 있습니다." + "\n\n" + menuInfo.menu(), chatThreadKey);
             System.out.println("  ✅ Food Image sent to Google Chat successfully.");
             
             // Wait to ensure order
             try { Thread.sleep(1000); } catch (InterruptedException ie) {}
 
-            // 9-2. Calorie Card
-            String cardImageName = "lunch_card_" + System.currentTimeMillis() + ".png";
-            gitHubClient.uploadImage(calorieCardFile, cardImageName);
-            String cardImageUrl = gitHubClient.getRawUrl(cardImageName);
-            
-            googleChatClient.sendCard(cardImageUrl, "상세 칼로리 분석", comment2);
+            // 10-2. Calorie Card
+            googleChatClient.sendCard(cardImageUrl, "상세 칼로리 분석", comment2, chatThreadKey);
             System.out.println("  ✅ Calorie Card sent to Google Chat successfully.");
 
-            // 10. Save and Upload Hash (Only if everything succeeded)
+            // 11. Save and Upload Hash (Only if everything succeeded)
             System.out.println("🔄 All tasks completed. Updating hash...");
             imageService.saveHash(currentHash);
             System.out.println("- Uploading menu_hash.txt to GitHub...");

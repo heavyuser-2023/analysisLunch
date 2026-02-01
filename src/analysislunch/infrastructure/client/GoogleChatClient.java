@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
 public class GoogleChatClient {
@@ -16,7 +17,7 @@ public class GoogleChatClient {
     /**
      * 이미지와 텍스트가 포함된 카드 메시지 전송
      */
-    public void sendCard(String imageUrl, String title, String text) throws IOException {
+    public void sendCard(String imageUrl, String title, String text, String threadKey) throws IOException {
         // Escape text for JSON
         String escapedText = text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
         String escapedTitle = title.replace("\\", "\\\\").replace("\"", "\\\"");
@@ -52,7 +53,15 @@ public class GoogleChatClient {
             }
             """, escapedTitle, imageUrl, imageUrl, imageUrl, escapedText);
 
-        HttpURLConnection conn = (HttpURLConnection) new URL(this.webhookUrl).openConnection();
+        String requestUrl = this.webhookUrl;
+        if (threadKey != null && !threadKey.isEmpty()) {
+            String encodedThreadKey = URLEncoder.encode(threadKey, StandardCharsets.UTF_8);
+            String separator = requestUrl.contains("?") ? "&" : "?";
+            requestUrl = requestUrl + separator + "threadKey=" + encodedThreadKey
+                + "&messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD";
+        }
+
+        HttpURLConnection conn = (HttpURLConnection) new URL(requestUrl).openConnection();
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
