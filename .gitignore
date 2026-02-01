@@ -32,3 +32,5 @@ out/
 target/
 build/
 bin/
+
+.gradle

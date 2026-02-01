@@ -3,4 +3,7 @@
 
 
 로컬에서 실행하려면
+gradle run
+
+act로 실행하려면
 act workflow_dispatch --secret-file .secrets

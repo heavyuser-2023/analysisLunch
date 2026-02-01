@@ -1,13 +1,18 @@
 package analysislunch.utils;
 
-import java.util.List;
-import java.util.Map;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 public class JsonUtils {
     public static String extract(String json, String key) {
         try {
-            Object root = SimpleJson.parse(json);
-            return findFirstStringByKey(root, key);
+            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+            if (!root.has(key) || root.get(key).isJsonNull()) {
+                return null;
+            }
+            return jsonElementToString(root.get(key));
         } catch (Exception e) {
             return null;
         }
@@ -15,9 +20,27 @@ public class JsonUtils {
 
     public static String extractGeminiText(String json) {
         try {
-            Object root = SimpleJson.parse(json);
-            String text = findFirstStringByKey(root, "text");
-            return text != null ? text : "분석 결과 없음";
+            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+            JsonArray candidates = getArray(root, "candidates");
+            if (candidates == null) {
+                return "분석 결과 없음";
+            }
+            for (JsonElement candidateEl : candidates) {
+                JsonObject candidate = asObject(candidateEl);
+                if (candidate == null) continue;
+                JsonObject content = getObject(candidate, "content");
+                if (content == null) continue;
+                JsonArray parts = getArray(content, "parts");
+                if (parts == null) continue;
+                for (JsonElement partEl : parts) {
+                    JsonObject part = asObject(partEl);
+                    if (part == null) continue;
+                    if (part.has("text")) {
+                        return jsonElementToString(part.get("text"));
+                    }
+                }
+            }
+            return "분석 결과 없음";
         } catch (Exception e) {
             return "분석 결과 없음";
         }
@@ -28,8 +51,31 @@ public class JsonUtils {
      */
     public static String extractImageData(String json) {
         try {
-            Object root = SimpleJson.parse(json);
-            return findFirstStringByKey(root, "data");
+            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+            JsonArray candidates = getArray(root, "candidates");
+            if (candidates == null) {
+                return null;
+            }
+            for (JsonElement candidateEl : candidates) {
+                JsonObject candidate = asObject(candidateEl);
+                if (candidate == null) continue;
+                JsonObject content = getObject(candidate, "content");
+                if (content == null) continue;
+                JsonArray parts = getArray(content, "parts");
+                if (parts == null) continue;
+                for (JsonElement partEl : parts) {
+                    JsonObject part = asObject(partEl);
+                    if (part == null) continue;
+                    JsonObject inlineData = getObject(part, "inlineData");
+                    if (inlineData == null) {
+                        inlineData = getObject(part, "inline_data");
+                    }
+                    if (inlineData != null && inlineData.has("data")) {
+                        return jsonElementToString(inlineData.get("data"));
+                    }
+                }
+            }
+            return null;
         } catch (Exception e) {
             return null;
         }
@@ -40,45 +86,71 @@ public class JsonUtils {
      */
     public static String extractSlackShareTs(String json) {
         try {
-            Object root = SimpleJson.parse(json);
-            Object shares = findFirstValueByKey(root, "shares");
-            if (shares == null) {
+            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+            JsonArray files = getArray(root, "files");
+            if (files == null || files.size() == 0) {
                 return null;
             }
-            return findFirstStringByKey(shares, "ts");
+            for (JsonElement fileEl : files) {
+                JsonObject file = asObject(fileEl);
+                if (file == null) continue;
+                JsonObject shares = getObject(file, "shares");
+                if (shares == null) continue;
+                String ts = extractShareTsFromScope(shares, "public");
+                if (ts != null) return ts;
+                ts = extractShareTsFromScope(shares, "private");
+                if (ts != null) return ts;
+            }
+            return null;
         } catch (Exception e) {
             return null;
         }
     }
 
-    private static String findFirstStringByKey(Object node, String key) {
-        Object value = findFirstValueByKey(node, key);
-        if (value == null) {
+    private static String extractShareTsFromScope(JsonObject shares, String scope) {
+        JsonObject scopeObj = getObject(shares, scope);
+        if (scopeObj == null) {
             return null;
         }
-        return value.toString();
-    }
-
-    private static Object findFirstValueByKey(Object node, String key) {
-        if (node instanceof Map) {
-            Map<?, ?> map = (Map<?, ?>) node;
-            if (map.containsKey(key)) {
-                return map.get(key);
+        for (String channelKey : scopeObj.keySet()) {
+            JsonArray shareList = getArray(scopeObj, channelKey);
+            if (shareList == null || shareList.size() == 0) {
+                continue;
             }
-            for (Object value : map.values()) {
-                Object found = findFirstValueByKey(value, key);
-                if (found != null) {
-                    return found;
-                }
-            }
-        } else if (node instanceof List) {
-            for (Object item : (List<?>) node) {
-                Object found = findFirstValueByKey(item, key);
-                if (found != null) {
-                    return found;
-                }
+            JsonObject share = asObject(shareList.get(0));
+            if (share != null && share.has("ts")) {
+                return jsonElementToString(share.get("ts"));
             }
         }
         return null;
+    }
+
+    private static JsonObject getObject(JsonObject obj, String key) {
+        if (obj == null || !obj.has(key) || obj.get(key).isJsonNull()) {
+            return null;
+        }
+        return asObject(obj.get(key));
+    }
+
+    private static JsonArray getArray(JsonObject obj, String key) {
+        if (obj == null || !obj.has(key) || obj.get(key).isJsonNull()) {
+            return null;
+        }
+        JsonElement el = obj.get(key);
+        return el.isJsonArray() ? el.getAsJsonArray() : null;
+    }
+
+    private static JsonObject asObject(JsonElement el) {
+        return el != null && el.isJsonObject() ? el.getAsJsonObject() : null;
+    }
+
+    private static String jsonElementToString(JsonElement el) {
+        if (el == null || el.isJsonNull()) {
+            return null;
+        }
+        if (el.isJsonPrimitive()) {
+            return el.getAsJsonPrimitive().getAsString();
+        }
+        return el.toString();
     }
 }

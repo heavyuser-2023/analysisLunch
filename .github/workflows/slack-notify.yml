@@ -36,6 +36,14 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Install Gradle
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl unzip
+          curl -sL https://services.gradle.org/distributions/gradle-8.10.2-bin.zip -o gradle.zip
+          unzip -q gradle.zip -d "$RUNNER_TEMP/gradle"
+          echo "$RUNNER_TEMP/gradle/gradle-8.10.2/bin" >> "$GITHUB_PATH"
+
       - name: Compile and Run Java
         env:
           # GitHub Secrets에서 가져와 환경 변수로 설정
@@ -48,6 +56,5 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
           GOOGLE_CHAT_WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
         run: |
-          javac -d out -sourcepath src src/analysislunch/Main.java
-          java -cp out analysislunch.Main
+          gradle -q run
 
