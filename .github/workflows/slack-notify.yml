@@ -2,8 +2,8 @@ name: Hourly Slack Notification
 
 on:
   schedule:
-    # KST 기준 월~금 오전 9시 실행 (UTC 00:00)
-    - cron: '0 0 * * 1-5'
+    # KST 기준 월~금 오전 8시 40분 실행 (UTC 23:40)
+    - cron: '40 23 * * 0-4'
   workflow_dispatch: # 수동으로 실행 버튼을 눌러 테스트할 수 있게 함
 
 jobs:
