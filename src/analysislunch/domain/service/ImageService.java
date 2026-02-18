@@ -9,6 +9,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -69,7 +70,7 @@ public class ImageService {
     public void download(String imageUrl, File destination) throws IOException {
         URL url = new URL(imageUrl);
         try (InputStream in = new BufferedInputStream(url.openStream());
-             java.io.FileOutputStream out = new java.io.FileOutputStream(destination)) {
+             FileOutputStream out = new FileOutputStream(destination)) {
             byte[] buffer = new byte[DOWNLOAD_BUFFER_SIZE];
             int bytesRead;
             while ((bytesRead = in.read(buffer)) != -1) {

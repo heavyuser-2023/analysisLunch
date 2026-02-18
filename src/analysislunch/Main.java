@@ -1,5 +1,6 @@
 package analysislunch;
 
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import analysislunch.config.AppConfig;
@@ -57,9 +58,9 @@ public class Main {
 
 
         } catch (IllegalStateException e) {
-            logger.severe("❌ 초기화 실패: " + e.getMessage());
+            logger.log(Level.SEVERE, "❌ 초기화 실패", e);
         } catch (Exception e) {
-            logger.severe("❌ 치명적 오류 발생: [" + e.getClass().getSimpleName() + "] " + e.getMessage());
+            logger.log(Level.SEVERE, "❌ 치명적 오류 발생: [" + e.getClass().getSimpleName() + "]", e);
         }
     }
 }

@@ -12,6 +12,10 @@ import analysislunch.utils.HttpUtils;
 public class BlogCrawler {
 
     private static final String HTTPS_SCHEME = "https:";
+    private static final Pattern IMAGE_URL_PATTERN = Pattern.compile(
+        "class=\"se-module se-module-image\"[^>]*>[\\s\\S]*?<img[^>]+(?:data-lazy-src|src)=\"([^\"]+)\"",
+        Pattern.CASE_INSENSITIVE
+    );
 
     /**
      * 네이버 블로그 페이지에서 {@code se-module-image} 클래스의 img 태그 URL을 추출합니다.
@@ -23,12 +27,7 @@ public class BlogCrawler {
     public String extractImageUrlFromBlog(String blogUrl) throws IOException {
         String html = HttpUtils.getHtml(blogUrl);
 
-        Pattern modulePattern = Pattern.compile(
-            "class=\"se-module se-module-image\"[^>]*>[\\s\\S]*?<img[^>]+(?:data-lazy-src|src)=\"([^\"]+)\"",
-            Pattern.CASE_INSENSITIVE
-        );
-
-        Matcher matcher = modulePattern.matcher(html);
+        Matcher matcher = IMAGE_URL_PATTERN.matcher(html);
         if (matcher.find()) {
             String imageUrl = matcher.group(1);
             if (imageUrl.startsWith("//")) {
