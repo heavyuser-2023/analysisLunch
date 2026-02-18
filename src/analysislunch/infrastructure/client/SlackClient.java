@@ -1,17 +1,17 @@
 package analysislunch.infrastructure.client;
 
-import analysislunch.utils.HttpUtils;
-import analysislunch.utils.JsonUtils;
-
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-
 import java.io.File;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.logging.Logger;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+
+import analysislunch.utils.HttpUtils;
+import analysislunch.utils.JsonUtils;
 
 /**
  * Slack API와 통신하는 클라이언트 클래스.

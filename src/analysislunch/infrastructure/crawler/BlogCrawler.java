@@ -1,10 +1,10 @@
 package analysislunch.infrastructure.crawler;
 
-import analysislunch.utils.HttpUtils;
-
 import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import analysislunch.utils.HttpUtils;
 
 /**
  * 네이버 블로그 페이지에서 메뉴 이미지 URL을 크롤링하는 클래스.

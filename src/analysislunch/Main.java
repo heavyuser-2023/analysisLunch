@@ -55,8 +55,11 @@ public class Main {
             // 4. 애플리케이션 실행
             flowService.run();
 
+
         } catch (IllegalStateException e) {
-            logger.severe("❌ 초기화 중 치명적 오류 발생: " + e.getMessage());
+            logger.severe("❌ 초기화 실패: " + e.getMessage());
+        } catch (Exception e) {
+            logger.severe("❌ 치명적 오류 발생: [" + e.getClass().getSimpleName() + "] " + e.getMessage());
         }
     }
 }
