@@ -230,8 +230,12 @@ public class ImageService {
      * @return 로드된 {@link Font}
      */
     private Font loadFont() {
-        try {
-            return Font.createFont(Font.TRUETYPE_FONT, new File(FONT_FILE_PATH));
+        try (InputStream is = getClass().getClassLoader().getResourceAsStream(FONT_FILE_PATH)) {
+            if (is == null) {
+                logger.warning("폰트 리소스를 찾을 수 없습니다: " + FONT_FILE_PATH + " — 기본 폰트 사용");
+                return new Font(FALLBACK_FONT_FAMILY, Font.PLAIN, 12);
+            }
+            return Font.createFont(Font.TRUETYPE_FONT, is);
         } catch (java.awt.FontFormatException | IOException e) {
             logger.warning("폰트 로드 실패, 기본 폰트 사용: " + e.getMessage());
             return new Font(FALLBACK_FONT_FAMILY, Font.PLAIN, 12);
