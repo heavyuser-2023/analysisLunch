@@ -1,5 +1,6 @@
 package analysislunch.domain.service;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
@@ -59,6 +60,20 @@ public class ImageService {
     private static final int SEPARATOR_STROKE_WIDTH = 2;
     private static final int HEADER_TEXT_Y = 75;
     private static final int SUBTEXT_X_OFFSET = 330;
+
+    // 카드 배경 색상
+    private static final Color COLOR_BG_DARK    = new Color(33, 37, 41);
+    private static final Color COLOR_BG_HEADER  = new Color(44, 48, 52);
+    // 헤더 텍스트 색상
+    private static final Color COLOR_ACCENT_YELLOW  = new Color(255, 193, 7);
+    private static final Color COLOR_TEXT_MUTED     = new Color(173, 181, 189);
+    // 행 색상
+    private static final Color COLOR_ROW_STRIPE  = new Color(255, 255, 255, 10);
+    private static final Color COLOR_TEXT_LIGHT  = new Color(248, 249, 250);
+    private static final Color COLOR_ACCENT_CYAN = new Color(13, 202, 240);
+    // 구분선 / 합계 색상
+    private static final Color COLOR_SEPARATOR   = new Color(73, 80, 87);
+    private static final Color COLOR_TOTAL_RED   = new Color(255, 99, 71);
 
     /**
      * 이미지 URL에서 파일을 다운로드합니다.
@@ -256,18 +271,18 @@ public class ImageService {
     }
 
     private void drawBackground(Graphics2D g2d, int height) {
-        g2d.setColor(new Color(33, 37, 41));
+        g2d.setColor(COLOR_BG_DARK);
         g2d.fillRect(0, 0, CARD_WIDTH, height);
-        g2d.setColor(new Color(44, 48, 52));
+        g2d.setColor(COLOR_BG_HEADER);
         g2d.fillRect(0, 0, CARD_WIDTH, CARD_HEADER_HEIGHT);
     }
 
     private void drawHeader(Graphics2D g2d, Font font) {
-        g2d.setColor(new Color(255, 193, 7));
+        g2d.setColor(COLOR_ACCENT_YELLOW);
         g2d.setFont(font.deriveFont(Font.BOLD, FONT_SIZE_HEADER));
         g2d.drawString("📊 오늘의 영양 분석", CARD_PADDING_X, HEADER_TEXT_Y);
 
-        g2d.setColor(new Color(173, 181, 189));
+        g2d.setColor(COLOR_TEXT_MUTED);
         g2d.setFont(font.deriveFont(Font.PLAIN, FONT_SIZE_SUBTEXT));
         g2d.drawString("AI가 분석한 예상 칼로리 정보입니다", CARD_WIDTH - SUBTEXT_X_OFFSET, HEADER_TEXT_Y);
     }
@@ -280,15 +295,15 @@ public class ImageService {
         for (int i = 0; i < rows.size(); i++) {
             String[] row = rows.get(i);
             if (i % 2 == 0) {
-                g2d.setColor(new Color(255, 255, 255, 10));
+                g2d.setColor(COLOR_ROW_STRIPE);
                 g2d.fillRect(CARD_SEPARATOR_MARGIN, y - CARD_ROW_STRIPE_Y_OFFSET,
                     CARD_WIDTH - CARD_SEPARATOR_MARGIN * 2, CARD_ROW_HEIGHT);
             }
-            g2d.setColor(new Color(248, 249, 250));
+            g2d.setColor(COLOR_TEXT_LIGHT);
             g2d.setFont(menuFont);
             g2d.drawString(row[0], CARD_PADDING_X, y);
 
-            g2d.setColor(new Color(13, 202, 240));
+            g2d.setColor(COLOR_ACCENT_CYAN);
             g2d.setFont(calFont);
             g2d.drawString(row[1], CARD_CALORIE_X, y);
 
@@ -297,15 +312,15 @@ public class ImageService {
     }
 
     private void drawSeparator(Graphics2D g2d, int height) {
-        g2d.setColor(new Color(73, 80, 87));
-        g2d.setStroke(new java.awt.BasicStroke(SEPARATOR_STROKE_WIDTH));
+        g2d.setColor(COLOR_SEPARATOR);
+        g2d.setStroke(new BasicStroke(SEPARATOR_STROKE_WIDTH));
         g2d.drawLine(CARD_SEPARATOR_MARGIN, height - CARD_FOOTER_HEIGHT,
             CARD_WIDTH - CARD_SEPARATOR_MARGIN, height - CARD_FOOTER_HEIGHT);
     }
 
     private void drawTotal(Graphics2D g2d, String totalLine, Font font, int height) {
         if (!totalLine.isEmpty()) {
-            g2d.setColor(new Color(255, 99, 71));
+            g2d.setColor(COLOR_TOTAL_RED);
             g2d.setFont(font.deriveFont(Font.BOLD, FONT_SIZE_TOTAL));
             g2d.drawString(totalLine, CARD_PADDING_X, height - CARD_SEPARATOR_MARGIN / 2);
         }
