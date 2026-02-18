@@ -26,7 +26,6 @@ public class SlackClient {
     private static final String API_COMPLETE = "https://slack.com/api/files.completeUploadExternal";
     private static final String API_POST_MESSAGE = "https://slack.com/api/chat.postMessage";
     private static final String DEFAULT_ALT_TEXT = "lunch image";
-    private static final String RESPONSE_OK = "\"ok\":true";
 
     private static final Gson GSON = new Gson();
 
@@ -70,7 +69,7 @@ public class SlackClient {
             body.addProperty("thread_ts", threadTs);
         }
         String response = HttpUtils.postJson(API_POST_MESSAGE, token, GSON.toJson(body));
-        if (!response.contains(RESPONSE_OK)) {
+        if (!isResponseOk(response)) {
             throw new IOException("메시지 전송 실패: " + response);
         }
         String messageTs = JsonUtils.extract(response, "ts");
@@ -119,7 +118,7 @@ public class SlackClient {
         }
 
         String response = HttpUtils.postJson(API_POST_MESSAGE, token, GSON.toJson(body));
-        if (!response.contains(RESPONSE_OK)) {
+        if (!isResponseOk(response)) {
             throw new IOException("이미지 메시지 전송 실패: " + response);
         }
         String messageTs = JsonUtils.extract(response, "ts");
@@ -172,7 +171,7 @@ public class SlackClient {
 
         // 3단계: 업로드 완료 처리
         String completeResponse = callCompleteUpload(fileId, title, initialComment, channelId, threadTs);
-        if (!completeResponse.contains(RESPONSE_OK)) {
+        if (!isResponseOk(completeResponse)) {
             throw new IOException("업로드 완료 처리 실패: " + completeResponse);
         }
         String messageTs = JsonUtils.extractSlackShareTs(completeResponse);
@@ -180,6 +179,22 @@ public class SlackClient {
             logger.warning("Slack 스레드 ts를 응답에서 찾을 수 없습니다.");
         }
         return messageTs;
+    }
+
+    /**
+     * Slack API 응답의 {@code ok} 필드를 Gson으로 파싱하여 성공 여부를 확인합니다.
+     *
+     * @param response API 응답 JSON 문자열
+     * @return {@code ok} 필드가 {@code true}이면 {@code true}, 그 외 {@code false}
+     */
+    private boolean isResponseOk(String response) {
+        try {
+            JsonObject json = GSON.fromJson(response, JsonObject.class);
+            return json != null && json.has("ok") && json.get("ok").getAsBoolean();
+        } catch (Exception e) {
+            logger.warning("응답 JSON 파싱 실패: " + e.getMessage());
+            return false;
+        }
     }
 
     /**
