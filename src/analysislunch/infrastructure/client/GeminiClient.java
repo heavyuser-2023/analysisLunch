@@ -1,15 +1,19 @@
 package analysislunch.infrastructure.client;
 
-import analysislunch.domain.model.MenuInfo;
-import analysislunch.utils.HttpUtils;
-import analysislunch.utils.JsonUtils;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Base64;
 import java.util.logging.Logger;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+
+import analysislunch.domain.model.MenuInfo;
+import analysislunch.utils.HttpUtils;
+import analysislunch.utils.JsonUtils;
 
 /**
  * Google Gemini API와 통신하는 클라이언트 클래스.
@@ -28,6 +32,8 @@ public class GeminiClient {
     private static final String MIME_TYPE_JPEG = "image/jpeg";
     private static final String MIME_TYPE_PNG = "image/png";
     private static final String FALLBACK_DATE = "날짜 없음";
+
+    private static final Gson GSON = new Gson();
 
     private final String apiKey;
 
@@ -53,15 +59,8 @@ public class GeminiClient {
         String prompt = "이 이미지는 구내식당 메뉴판입니다. 오늘의 날짜와 메뉴 내용을 추출해주세요. "
             + "첫 번째 줄에는 날짜만 적고, 두 번째 줄에는 메뉴 이름만 쉼표로 구분해서 작성해주세요. "
             + "설명이나 다른 말은 하지 마세요.";
-        String escapedPrompt = escapeJsonString(prompt);
 
-        String jsonBody = "{"
-            + "\"contents\": [{"
-            + "\"parts\": ["
-            + "{\"text\": \"" + escapedPrompt + "\"},"
-            + "{\"inline_data\": {\"mime_type\": \"" + MIME_TYPE_JPEG + "\", \"data\": \"" + base64Image + "\"}}"
-            + "]"
-            + "}]}";
+        String jsonBody = GSON.toJson(buildTextWithImageRequest(prompt, base64Image, MIME_TYPE_JPEG));
 
         String response = HttpUtils.postJson(API_URL_TEXT + "?key=" + apiKey, null, jsonBody);
         logger.info("메뉴 텍스트 추출 응답 수신 완료");
@@ -108,16 +107,26 @@ public class GeminiClient {
             4. 메뉴 목록 중 이미지 생성 누락 금지
             """, menuText);
 
-        String escapedPrompt = escapeJsonString(prompt);
+        JsonObject textPart = new JsonObject();
+        textPart.addProperty("text", prompt);
+        JsonArray parts = new JsonArray();
+        parts.add(textPart);
+        JsonObject content = new JsonObject();
+        content.add("parts", parts);
+        JsonArray contents = new JsonArray();
+        contents.add(content);
 
-        String jsonBody = "{"
-            + "\"contents\": [{"
-            + "\"parts\": [{\"text\": \"" + escapedPrompt + "\"}]"
-            + "}],"
-            + "\"generationConfig\": {"
-            + "\"responseModalities\": [\"IMAGE\", \"TEXT\"]"
-            + "}"
-            + "}";
+        JsonArray responseModalities = new JsonArray();
+        responseModalities.add("IMAGE");
+        responseModalities.add("TEXT");
+        JsonObject generationConfig = new JsonObject();
+        generationConfig.add("responseModalities", responseModalities);
+
+        JsonObject requestBody = new JsonObject();
+        requestBody.add("contents", contents);
+        requestBody.add("generationConfig", generationConfig);
+
+        String jsonBody = GSON.toJson(requestBody);
 
         String response = HttpUtils.postJson(API_URL_IMAGE + "?key=" + apiKey, null, jsonBody);
         logger.info("이미지 생성 응답 수신 완료 (길이: " + response.length() + ")");
@@ -173,20 +182,45 @@ public class GeminiClient {
             설명은 생략하고 표와 합계만 간단히 출력하세요.
             """, menuText);
 
-        String escapedPrompt = escapeJsonString(prompt);
-
-        String jsonBody = "{"
-            + "\"contents\": [{"
-            + "\"parts\": ["
-            + "{\"text\": \"" + escapedPrompt + "\"},"
-            + "{\"inline_data\": {\"mime_type\": \"" + MIME_TYPE_PNG + "\", \"data\": \"" + base64Image + "\"}}"
-            + "]"
-            + "}]}";
+        String jsonBody = GSON.toJson(buildTextWithImageRequest(prompt, base64Image, MIME_TYPE_PNG));
 
         String response = HttpUtils.postJson(API_URL_TEXT + "?key=" + apiKey, null, jsonBody);
         logger.info("칼로리 분석 응답 수신 완료");
 
         return JsonUtils.extractGeminiText(response);
+    }
+
+    /**
+     * 텍스트 프롬프트와 인라인 이미지를 포함한 Gemini API 요청 객체를 생성합니다.
+     *
+     * @param prompt    텍스트 프롬프트
+     * @param base64Data Base64 인코딩된 이미지 데이터
+     * @param mimeType  이미지 MIME 타입 (예: "image/jpeg")
+     * @return Gson으로 직렬화 가능한 요청 {@link JsonObject}
+     */
+    private JsonObject buildTextWithImageRequest(String prompt, String base64Data, String mimeType) {
+        JsonObject textPart = new JsonObject();
+        textPart.addProperty("text", prompt);
+
+        JsonObject inlineData = new JsonObject();
+        inlineData.addProperty("mime_type", mimeType);
+        inlineData.addProperty("data", base64Data);
+        JsonObject imagePart = new JsonObject();
+        imagePart.add("inline_data", inlineData);
+
+        JsonArray parts = new JsonArray();
+        parts.add(textPart);
+        parts.add(imagePart);
+
+        JsonObject content = new JsonObject();
+        content.add("parts", parts);
+
+        JsonArray contents = new JsonArray();
+        contents.add(content);
+
+        JsonObject requestBody = new JsonObject();
+        requestBody.add("contents", contents);
+        return requestBody;
     }
 
     /**
@@ -199,17 +233,5 @@ public class GeminiClient {
     private String encodeImageToBase64(File file) throws IOException {
         byte[] bytes = Files.readAllBytes(file.toPath());
         return Base64.getEncoder().encodeToString(bytes);
-    }
-
-    /**
-     * JSON 문자열 내 특수문자를 이스케이프합니다.
-     *
-     * @param text 이스케이프할 문자열
-     * @return 이스케이프된 문자열
-     */
-    private String escapeJsonString(String text) {
-        return text.replace("\\", "\\\\")
-                   .replace("\"", "\\\"")
-                   .replace("\n", "\\n");
     }
 }

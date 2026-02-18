@@ -1,5 +1,7 @@
 package analysislunch;
 
+import java.util.logging.Logger;
+
 import analysislunch.config.AppConfig;
 import analysislunch.domain.service.ImageService;
 import analysislunch.domain.service.LunchFlowService;
@@ -9,7 +11,6 @@ import analysislunch.infrastructure.client.GoogleChatClient;
 import analysislunch.infrastructure.client.SlackClient;
 import analysislunch.infrastructure.crawler.BlogCrawler;
 
-import java.util.logging.Logger;
 
 /**
  * 점심 메뉴 분석 애플리케이션 진입점.
@@ -54,8 +55,8 @@ public class Main {
             // 4. 애플리케이션 실행
             flowService.run();
 
-        } catch (Exception e) {
-            logger.severe("❌ 초기화 또는 실행 중 치명적 오류 발생: " + e.getMessage());
+        } catch (IllegalStateException e) {
+            logger.severe("❌ 초기화 중 치명적 오류 발생: " + e.getMessage());
         }
     }
 }
