@@ -1,36 +1,42 @@
 package analysislunch.infrastructure.crawler;
 
 import analysislunch.utils.HttpUtils;
+
 import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * 네이버 블로그 페이지에서 메뉴 이미지 URL을 크롤링하는 클래스.
+ */
 public class BlogCrawler {
 
+    private static final String HTTPS_SCHEME = "https:";
+
     /**
-     * 네이버 블로그 페이지에서 se-module-image 클래스의 img 태그 URL을 추출
+     * 네이버 블로그 페이지에서 {@code se-module-image} 클래스의 img 태그 URL을 추출합니다.
+     *
+     * @param blogUrl 크롤링할 네이버 블로그 URL
+     * @return 추출된 이미지 URL (절대 경로)
+     * @throws IOException 페이지 로드 실패 또는 이미지를 찾을 수 없을 때
      */
     public String extractImageUrlFromBlog(String blogUrl) throws IOException {
-        // 네이버 모바일 블로그 HTML 가져오기
         String html = HttpUtils.getHtml(blogUrl);
-        
-        // se-module se-module-image 클래스를 찾고 그 안의 img 태그의 src 추출
-        // 패턴: class="se-module se-module-image" ... <img ... src="..." 또는 data-lazy-src="..."
+
         Pattern modulePattern = Pattern.compile(
             "class=\"se-module se-module-image\"[^>]*>[\\s\\S]*?<img[^>]+(?:data-lazy-src|src)=\"([^\"]+)\"",
             Pattern.CASE_INSENSITIVE
         );
-        
+
         Matcher matcher = modulePattern.matcher(html);
         if (matcher.find()) {
             String imageUrl = matcher.group(1);
-            // URL이 상대경로인 경우 처리
             if (imageUrl.startsWith("//")) {
-                imageUrl = "https:" + imageUrl;
+                imageUrl = HTTPS_SCHEME + imageUrl;
             }
             return imageUrl;
         }
-        
+
         throw new IOException("블로그 페이지에서 이미지를 찾을 수 없습니다: " + blogUrl);
     }
 }

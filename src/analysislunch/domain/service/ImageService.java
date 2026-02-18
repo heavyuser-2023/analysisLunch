@@ -1,21 +1,76 @@
 package analysislunch.domain.service;
 
 import java.awt.Color;
+import java.awt.Font;
 import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Logger;
 import javax.imageio.ImageIO;
 
+/**
+ * 이미지 다운로드, 변환, 해시 관리, 칼로리 카드 생성을 담당하는 서비스 클래스.
+ */
 public class ImageService {
-    private static final String HASH_FILE = "menu_hash.txt";
 
+    private static final Logger logger = Logger.getLogger(ImageService.class.getName());
+
+    private static final String HASH_FILE = "menu_hash.txt";
+    private static final String HASH_ALGORITHM = "SHA-256";
+    private static final String FONT_FILE_PATH = "fonts/NanumGothic.ttf";
+    private static final String FALLBACK_FONT_FAMILY = "SansSerif";
+    private static final String OUTPUT_FORMAT_JPG = "jpg";
+    private static final String OUTPUT_FORMAT_PNG = "png";
+    private static final String PIPE_DELIMITER = "\\|";
+    private static final String TABLE_HEADER_MENU = "메뉴명";
+    private static final String TABLE_SEPARATOR_PREFIX = "---";
+    private static final String TOTAL_CALORIE_KEYWORD = "총 예상 칼로리";
+    private static final String BOLD_MARKER = "**";
+
+    private static final int DOWNLOAD_BUFFER_SIZE = 8192;
+    private static final int HASH_BUFFER_SIZE = 1024;
+    private static final int CARD_WIDTH = 1000;
+    private static final int CARD_ROW_HEIGHT = 60;
+    private static final int CARD_HEADER_HEIGHT = 120;
+    private static final int CARD_FOOTER_HEIGHT = 100;
+    private static final int CARD_PADDING_X = 80;
+    private static final int CARD_CALORIE_X = 750;
+    private static final int CARD_SEPARATOR_MARGIN = 50;
+    private static final int CARD_ROW_INITIAL_Y_OFFSET = 40;
+    private static final int CARD_ROW_STRIPE_Y_OFFSET = 35;
+    private static final float FONT_SIZE_HEADER = 36f;
+    private static final float FONT_SIZE_SUBTEXT = 18f;
+    private static final float FONT_SIZE_ROW = 24f;
+    private static final float FONT_SIZE_TOTAL = 32f;
+    private static final int SEPARATOR_STROKE_WIDTH = 2;
+    private static final int HEADER_TEXT_Y = 75;
+    private static final int SUBTEXT_X_OFFSET = 330;
+
+    /**
+     * 이미지 URL에서 파일을 다운로드합니다.
+     *
+     * @param imageUrl    다운로드할 이미지 URL
+     * @param destination 저장할 대상 파일
+     * @throws IOException 다운로드 실패 시
+     */
     public void download(String imageUrl, File destination) throws IOException {
         URL url = new URL(imageUrl);
         try (InputStream in = new BufferedInputStream(url.openStream());
-             FileOutputStream out = new FileOutputStream(destination)) {
-            byte[] buffer = new byte[8192];
+             java.io.FileOutputStream out = new java.io.FileOutputStream(destination)) {
+            byte[] buffer = new byte[DOWNLOAD_BUFFER_SIZE];
             int bytesRead;
             while ((bytesRead = in.read(buffer)) != -1) {
                 out.write(buffer, 0, bytesRead);
@@ -23,12 +78,22 @@ public class ImageService {
         }
     }
 
+    /**
+     * PNG 이미지를 흰색 배경의 JPG 이미지로 변환합니다.
+     *
+     * @param input  변환할 PNG 파일
+     * @param output 저장할 JPG 파일
+     * @throws IOException 이미지 읽기/쓰기 실패 시
+     */
     public void convertPngToWhiteBgJpg(File input, File output) throws IOException {
         BufferedImage original = ImageIO.read(input);
-        if (original == null) throw new IOException("Failed to read image: " + input.getName());
+        if (original == null) {
+            throw new IOException("이미지 읽기 실패: " + input.getName());
+        }
 
         BufferedImage newImage = new BufferedImage(
-            original.getWidth(), original.getHeight(), BufferedImage.TYPE_INT_RGB);
+            original.getWidth(), original.getHeight(), BufferedImage.TYPE_INT_RGB
+        );
 
         Graphics2D g2d = newImage.createGraphics();
         g2d.setColor(Color.WHITE);
@@ -36,32 +101,51 @@ public class ImageService {
         g2d.drawImage(original, 0, 0, null);
         g2d.dispose();
 
-        ImageIO.write(newImage, "jpg", output);
+        ImageIO.write(newImage, OUTPUT_FORMAT_JPG, output);
     }
 
+    /**
+     * 마지막으로 저장된 이미지 해시를 로드합니다.
+     *
+     * @return 저장된 해시 문자열, 파일이 없거나 읽기 실패 시 {@code null}
+     */
     public String loadLastHash() {
         File file = new File(HASH_FILE);
-        if (!file.exists()) return null;
+        if (!file.exists()) {
+            return null;
+        }
         try (BufferedReader br = new BufferedReader(new FileReader(file))) {
             return br.readLine();
         } catch (IOException e) {
-            System.err.println("Failed to read hash file: " + e.getMessage());
+            logger.warning("해시 파일 읽기 실패: " + e.getMessage());
             return null;
         }
     }
 
+    /**
+     * 이미지 해시를 파일에 저장합니다.
+     *
+     * @param hash 저장할 해시 문자열
+     */
     public void saveHash(String hash) {
         try (FileWriter fw = new FileWriter(HASH_FILE)) {
             fw.write(hash);
         } catch (IOException e) {
-            System.err.println("Failed to write hash file: " + e.getMessage());
+            logger.warning("해시 파일 저장 실패: " + e.getMessage());
         }
     }
 
+    /**
+     * 파일의 SHA-256 해시를 계산합니다.
+     *
+     * @param file 해시를 계산할 파일
+     * @return 16진수 형식의 SHA-256 해시 문자열
+     * @throws IOException 파일 읽기 또는 해시 알고리즘 초기화 실패 시
+     */
     public String calculateFileHash(File file) throws IOException {
         try (FileInputStream fis = new FileInputStream(file)) {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] byteArray = new byte[1024];
+            MessageDigest digest = MessageDigest.getInstance(HASH_ALGORITHM);
+            byte[] byteArray = new byte[HASH_BUFFER_SIZE];
             int bytesCount;
             while ((bytesCount = fis.read(byteArray)) != -1) {
                 digest.update(byteArray, 0, bytesCount);
@@ -72,132 +156,157 @@ public class ImageService {
                 sb.append(String.format("%02x", b));
             }
             return sb.toString();
-        } catch (Exception e) {
-            throw new IOException("Hash calculation failed", e);
-        }
-    }
-
-    public void deleteFile(String path) {
-        File file = new File(path);
-        if (file.exists()) {
-            file.delete();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IOException("해시 알고리즘 초기화 실패: " + HASH_ALGORITHM, e);
         }
     }
 
     /**
-     * 칼로리 정보를 담은 독립적인 카드 이미지 생성
+     * 지정된 경로의 파일을 삭제합니다.
+     *
+     * @param path 삭제할 파일 경로
+     */
+    public void deleteFile(String path) {
+        File file = new File(path);
+        if (file.exists() && !file.delete()) {
+            logger.warning("파일 삭제 실패: " + path);
+        }
+    }
+
+    /**
+     * 칼로리 분석 정보를 담은 카드 이미지를 생성합니다.
+     *
+     * @param calorieInfo 마크다운 표 형식의 칼로리 분석 문자열
+     * @param output      생성할 PNG 이미지 파일
+     * @throws IOException 이미지 생성 또는 저장 실패 시
      */
     public void createCalorieCard(String calorieInfo, File output) throws IOException {
-        // 1. Parsing Logic
-        java.util.List<String[]> rows = new java.util.ArrayList<>();
+        List<String[]> rows = new ArrayList<>();
         String totalLine = "";
-        
-        String[] lines = calorieInfo.split("\n");
-        for (String line : lines) {
+
+        for (String line : calorieInfo.split("\n")) {
             line = line.trim();
-            if (line.isEmpty() || line.startsWith("|---") || line.startsWith("|-")) continue;
-            
+            if (line.isEmpty() || line.startsWith("|" + TABLE_SEPARATOR_PREFIX) || line.startsWith("|-")) {
+                continue;
+            }
             if (line.startsWith("|")) {
-                String[] parts = line.split("\\|");
+                String[] parts = line.split(PIPE_DELIMITER);
                 if (parts.length >= 3) {
-                     String menu = parts[1].trim();
-                     String cal = parts[2].trim();
-                     if (!menu.equals("메뉴명") && !menu.contains("---")) {
-                         rows.add(new String[]{menu, cal});
-                     }
+                    String menu = parts[1].trim();
+                    String cal = parts[2].trim();
+                    if (!menu.equals(TABLE_HEADER_MENU) && !menu.contains(TABLE_SEPARATOR_PREFIX)) {
+                        rows.add(new String[]{menu, cal});
+                    }
                 }
-            } else if (line.contains("총 예상 칼로리")) {
-                totalLine = line.replace("**", "").trim();
+            } else if (line.contains(TOTAL_CALORIE_KEYWORD)) {
+                totalLine = line.replace(BOLD_MARKER, "").trim();
             }
         }
-        
-        // 2. Load Font
-        java.awt.Font font;
+
+        Font font = loadFont();
+        BufferedImage cardImage = renderCard(rows, totalLine, font);
+        ImageIO.write(cardImage, OUTPUT_FORMAT_PNG, output);
+    }
+
+    /**
+     * 폰트를 로드합니다. 커스텀 폰트 로드 실패 시 기본 폰트를 반환합니다.
+     *
+     * @return 로드된 {@link Font}
+     */
+    private Font loadFont() {
         try {
-            font = java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, new File("fonts/NanumGothic.ttf"));
-        } catch (java.awt.FontFormatException e) {
-            System.err.println("Font format error, using default: " + e.getMessage());
-            font = new java.awt.Font("SansSerif", java.awt.Font.PLAIN, 12);
+            return Font.createFont(Font.TRUETYPE_FONT, new File(FONT_FILE_PATH));
+        } catch (java.awt.FontFormatException | IOException e) {
+            logger.warning("폰트 로드 실패, 기본 폰트 사용: " + e.getMessage());
+            return new Font(FALLBACK_FONT_FAMILY, Font.PLAIN, 12);
         }
+    }
 
-        // 3. Layout Calculation
-        int width = 1000;
-        int rowHeight = 60;
-        int headerHeight = 120;
-        int footerHeight = 100;
-        int contentHeight = rows.size() * rowHeight;
-        int height = headerHeight + contentHeight + footerHeight;
-        
-        BufferedImage cardImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+    /**
+     * 칼로리 카드 이미지를 렌더링합니다.
+     *
+     * @param rows      메뉴명과 칼로리 쌍의 목록
+     * @param totalLine 총 칼로리 텍스트
+     * @param font      사용할 폰트
+     * @return 렌더링된 {@link BufferedImage}
+     */
+    private BufferedImage renderCard(List<String[]> rows, String totalLine, Font font) {
+        int contentHeight = rows.size() * CARD_ROW_HEIGHT;
+        int height = CARD_HEADER_HEIGHT + contentHeight + CARD_FOOTER_HEIGHT;
+
+        BufferedImage cardImage = new BufferedImage(CARD_WIDTH, height, BufferedImage.TYPE_INT_RGB);
         Graphics2D g2d = cardImage.createGraphics();
-        
-        // High Quality Rendering Hints
-        g2d.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING, java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        g2d.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
-        g2d.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
 
-        // Background
-        g2d.setColor(new Color(33, 37, 41)); // Dark Slate
-        g2d.fillRect(0, 0, width, height);
-        
-        // Header Area
-        g2d.setColor(new Color(44, 48, 52)); // Slightly lighter header
-        g2d.fillRect(0, 0, width, headerHeight);
-        
-        // Header Text
-        g2d.setColor(new Color(255, 193, 7)); // Amber color
-        g2d.setFont(font.deriveFont(java.awt.Font.BOLD, 36f));
-        g2d.drawString("\uD83D\uDCCA 오늘의 영양 분석", 50, 75);
-        
-        g2d.setColor(new Color(173, 181, 189)); // Grey subtext
-        g2d.setFont(font.deriveFont(java.awt.Font.PLAIN, 18f));
-        // Right-alignedish
-        g2d.drawString("AI가 분석한 예상 칼로리 정보입니다", width - 330, 75);
+        applyRenderingHints(g2d);
+        drawBackground(g2d, height);
+        drawHeader(g2d, font);
+        drawRows(g2d, rows, font);
+        drawSeparator(g2d, height);
+        drawTotal(g2d, totalLine, font, height);
 
-        // Table Content
-        int y = headerHeight + 40;
-        int xMenu = 80;
-        int xCal = 750;
-        
-        // Font setup for rows
-        java.awt.Font menuFont = font.deriveFont(java.awt.Font.PLAIN, 24f);
-        java.awt.Font calFont = font.deriveFont(java.awt.Font.BOLD, 24f);
+        g2d.dispose();
+        return cardImage;
+    }
+
+    private void applyRenderingHints(Graphics2D g2d) {
+        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    }
+
+    private void drawBackground(Graphics2D g2d, int height) {
+        g2d.setColor(new Color(33, 37, 41));
+        g2d.fillRect(0, 0, CARD_WIDTH, height);
+        g2d.setColor(new Color(44, 48, 52));
+        g2d.fillRect(0, 0, CARD_WIDTH, CARD_HEADER_HEIGHT);
+    }
+
+    private void drawHeader(Graphics2D g2d, Font font) {
+        g2d.setColor(new Color(255, 193, 7));
+        g2d.setFont(font.deriveFont(Font.BOLD, FONT_SIZE_HEADER));
+        g2d.drawString("📊 오늘의 영양 분석", CARD_PADDING_X, HEADER_TEXT_Y);
+
+        g2d.setColor(new Color(173, 181, 189));
+        g2d.setFont(font.deriveFont(Font.PLAIN, FONT_SIZE_SUBTEXT));
+        g2d.drawString("AI가 분석한 예상 칼로리 정보입니다", CARD_WIDTH - SUBTEXT_X_OFFSET, HEADER_TEXT_Y);
+    }
+
+    private void drawRows(Graphics2D g2d, List<String[]> rows, Font font) {
+        int y = CARD_HEADER_HEIGHT + CARD_ROW_INITIAL_Y_OFFSET;
+        Font menuFont = font.deriveFont(Font.PLAIN, FONT_SIZE_ROW);
+        Font calFont = font.deriveFont(Font.BOLD, FONT_SIZE_ROW);
 
         for (int i = 0; i < rows.size(); i++) {
             String[] row = rows.get(i);
-            
-            // Alternating row background (very subtle)
             if (i % 2 == 0) {
-                g2d.setColor(new Color(255, 255, 255, 10)); // Very faint white overlay
-                g2d.fillRect(30, y - 35, width - 60, rowHeight);
+                g2d.setColor(new Color(255, 255, 255, 10));
+                g2d.fillRect(CARD_SEPARATOR_MARGIN, y - CARD_ROW_STRIPE_Y_OFFSET,
+                    CARD_WIDTH - CARD_SEPARATOR_MARGIN * 2, CARD_ROW_HEIGHT);
             }
-
-            g2d.setColor(new Color(248, 249, 250)); // White text
+            g2d.setColor(new Color(248, 249, 250));
             g2d.setFont(menuFont);
-            g2d.drawString(row[0], xMenu, y);
-            
-            g2d.setColor(new Color(13, 202, 240)); // Cyan text for calories
+            g2d.drawString(row[0], CARD_PADDING_X, y);
+
+            g2d.setColor(new Color(13, 202, 240));
             g2d.setFont(calFont);
-            // Right align logic for calories could be added, but left align at xCal is simple
-            g2d.drawString(row[1], xCal, y);
-            
-            y += rowHeight;
+            g2d.drawString(row[1], CARD_CALORIE_X, y);
+
+            y += CARD_ROW_HEIGHT;
         }
-        
-        // Separator line before total
+    }
+
+    private void drawSeparator(Graphics2D g2d, int height) {
         g2d.setColor(new Color(73, 80, 87));
-        g2d.setStroke(new java.awt.BasicStroke(2));
-        g2d.drawLine(50, height - footerHeight, width - 50, height - footerHeight);
-        
-        // Total Section
+        g2d.setStroke(new java.awt.BasicStroke(SEPARATOR_STROKE_WIDTH));
+        g2d.drawLine(CARD_SEPARATOR_MARGIN, height - CARD_FOOTER_HEIGHT,
+            CARD_WIDTH - CARD_SEPARATOR_MARGIN, height - CARD_FOOTER_HEIGHT);
+    }
+
+    private void drawTotal(Graphics2D g2d, String totalLine, Font font, int height) {
         if (!totalLine.isEmpty()) {
-            g2d.setColor(new Color(255, 99, 71)); // Tomato/Red color
-            g2d.setFont(font.deriveFont(java.awt.Font.BOLD, 32f));
-            // Centered-ish or right-aligned layout
-            g2d.drawString(totalLine, xMenu, height - 35);
+            g2d.setColor(new Color(255, 99, 71));
+            g2d.setFont(font.deriveFont(Font.BOLD, FONT_SIZE_TOTAL));
+            g2d.drawString(totalLine, CARD_PADDING_X, height - CARD_SEPARATOR_MARGIN / 2);
         }
-        
-        g2d.dispose();
-        ImageIO.write(cardImage, "png", output);
     }
 }

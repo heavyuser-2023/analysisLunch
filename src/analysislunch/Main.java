@@ -9,15 +9,30 @@ import analysislunch.infrastructure.client.GoogleChatClient;
 import analysislunch.infrastructure.client.SlackClient;
 import analysislunch.infrastructure.crawler.BlogCrawler;
 
+import java.util.logging.Logger;
+
+/**
+ * 점심 메뉴 분석 애플리케이션 진입점.
+ *
+ * <p>환경 변수를 로드하고 의존성을 초기화한 뒤 {@link LunchFlowService}를 실행합니다.
+ */
 public class Main {
+
+    private static final Logger logger = Logger.getLogger(Main.class.getName());
+
+    /**
+     * 애플리케이션 메인 메서드.
+     *
+     * @param args 커맨드라인 인수 (사용하지 않음)
+     */
     public static void main(String[] args) {
-        System.out.println("🚀 프로그램 시작: 점심 메뉴 확인 (Refactored)");
-        
+        logger.info("🚀 프로그램 시작: 점심 메뉴 확인");
+
         try {
-            // 1. Load Configuration
+            // 1. 설정 로드
             AppConfig config = AppConfig.load();
 
-            // 2. Initialize Infrastructure
+            // 2. 인프라 초기화
             BlogCrawler blogCrawler = new BlogCrawler();
             ImageService imageService = new ImageService();
             GeminiClient geminiClient = new GeminiClient(config.getGeminiApiKey());
@@ -25,7 +40,7 @@ public class Main {
             GitHubClient gitHubClient = new GitHubClient(config.getGithubToken(), config.getGithubRepo());
             GoogleChatClient googleChatClient = new GoogleChatClient(config.getGoogleChatWebhook());
 
-            // 3. Initialize Service
+            // 3. 서비스 초기화
             LunchFlowService flowService = new LunchFlowService(
                 config,
                 imageService,
@@ -36,12 +51,11 @@ public class Main {
                 googleChatClient
             );
 
-            // 4. Run Application Flow
+            // 4. 애플리케이션 실행
             flowService.run();
 
         } catch (Exception e) {
-            System.err.println("❌ Critical Error during initialization or execution: " + e.getMessage());
-            e.printStackTrace();
+            logger.severe("❌ 초기화 또는 실행 중 치명적 오류 발생: " + e.getMessage());
         }
     }
 }

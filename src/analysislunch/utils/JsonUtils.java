@@ -3,9 +3,29 @@ package analysislunch.utils;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 
+/**
+ * JSON 파싱 유틸리티 클래스.
+ *
+ * <p>Gemini API 응답, Slack API 응답 등의 JSON 데이터에서 필요한 값을 추출합니다.
+ */
 public class JsonUtils {
+
+    private static final String FALLBACK_TEXT = "분석 결과 없음";
+
+    private JsonUtils() {
+        // 유틸리티 클래스 - 인스턴스화 금지
+    }
+
+    /**
+     * JSON 문자열의 최상위 객체에서 특정 키의 값을 추출합니다.
+     *
+     * @param json JSON 문자열
+     * @param key  추출할 키
+     * @return 키에 해당하는 값 문자열, 없거나 파싱 실패 시 {@code null}
+     */
     public static String extract(String json, String key) {
         try {
             JsonObject root = JsonParser.parseString(json).getAsJsonObject();
@@ -13,41 +33,55 @@ public class JsonUtils {
                 return null;
             }
             return jsonElementToString(root.get(key));
-        } catch (Exception e) {
+        } catch (JsonParseException | IllegalStateException e) {
             return null;
         }
     }
 
+    /**
+     * Gemini API 응답 JSON에서 텍스트 내용을 추출합니다.
+     *
+     * @param json Gemini API 응답 JSON 문자열
+     * @return 추출된 텍스트, 없거나 파싱 실패 시 {@value #FALLBACK_TEXT}
+     */
     public static String extractGeminiText(String json) {
         try {
             JsonObject root = JsonParser.parseString(json).getAsJsonObject();
             JsonArray candidates = getArray(root, "candidates");
             if (candidates == null) {
-                return "분석 결과 없음";
+                return FALLBACK_TEXT;
             }
             for (JsonElement candidateEl : candidates) {
                 JsonObject candidate = asObject(candidateEl);
-                if (candidate == null) continue;
+                if (candidate == null) {
+                    continue;
+                }
                 JsonObject content = getObject(candidate, "content");
-                if (content == null) continue;
+                if (content == null) {
+                    continue;
+                }
                 JsonArray parts = getArray(content, "parts");
-                if (parts == null) continue;
+                if (parts == null) {
+                    continue;
+                }
                 for (JsonElement partEl : parts) {
                     JsonObject part = asObject(partEl);
-                    if (part == null) continue;
-                    if (part.has("text")) {
+                    if (part != null && part.has("text")) {
                         return jsonElementToString(part.get("text"));
                     }
                 }
             }
-            return "분석 결과 없음";
-        } catch (Exception e) {
-            return "분석 결과 없음";
+            return FALLBACK_TEXT;
+        } catch (JsonParseException | IllegalStateException e) {
+            return FALLBACK_TEXT;
         }
     }
 
     /**
-     * Extract base64 image data from Gemini response
+     * Gemini API 응답 JSON에서 Base64 인코딩된 이미지 데이터를 추출합니다.
+     *
+     * @param json Gemini API 응답 JSON 문자열
+     * @return Base64 이미지 데이터 문자열, 없거나 파싱 실패 시 {@code null}
      */
     public static String extractImageData(String json) {
         try {
@@ -58,14 +92,22 @@ public class JsonUtils {
             }
             for (JsonElement candidateEl : candidates) {
                 JsonObject candidate = asObject(candidateEl);
-                if (candidate == null) continue;
+                if (candidate == null) {
+                    continue;
+                }
                 JsonObject content = getObject(candidate, "content");
-                if (content == null) continue;
+                if (content == null) {
+                    continue;
+                }
                 JsonArray parts = getArray(content, "parts");
-                if (parts == null) continue;
+                if (parts == null) {
+                    continue;
+                }
                 for (JsonElement partEl : parts) {
                     JsonObject part = asObject(partEl);
-                    if (part == null) continue;
+                    if (part == null) {
+                        continue;
+                    }
                     JsonObject inlineData = getObject(part, "inlineData");
                     if (inlineData == null) {
                         inlineData = getObject(part, "inline_data");
@@ -76,33 +118,44 @@ public class JsonUtils {
                 }
             }
             return null;
-        } catch (Exception e) {
+        } catch (JsonParseException | IllegalStateException e) {
             return null;
         }
     }
 
     /**
-     * Slack 파일 업로드 응답에서 공유 메시지 ts 추출
+     * Slack 파일 업로드 완료 응답에서 공유 메시지의 타임스탬프(ts)를 추출합니다.
+     *
+     * @param json Slack files.completeUploadExternal API 응답 JSON 문자열
+     * @return 메시지 타임스탬프 문자열, 없거나 파싱 실패 시 {@code null}
      */
     public static String extractSlackShareTs(String json) {
         try {
             JsonObject root = JsonParser.parseString(json).getAsJsonObject();
             JsonArray files = getArray(root, "files");
-            if (files == null || files.size() == 0) {
+            if (files == null || files.isEmpty()) {
                 return null;
             }
             for (JsonElement fileEl : files) {
                 JsonObject file = asObject(fileEl);
-                if (file == null) continue;
+                if (file == null) {
+                    continue;
+                }
                 JsonObject shares = getObject(file, "shares");
-                if (shares == null) continue;
+                if (shares == null) {
+                    continue;
+                }
                 String ts = extractShareTsFromScope(shares, "public");
-                if (ts != null) return ts;
+                if (ts != null) {
+                    return ts;
+                }
                 ts = extractShareTsFromScope(shares, "private");
-                if (ts != null) return ts;
+                if (ts != null) {
+                    return ts;
+                }
             }
             return null;
-        } catch (Exception e) {
+        } catch (JsonParseException | IllegalStateException e) {
             return null;
         }
     }
@@ -114,7 +167,7 @@ public class JsonUtils {
         }
         for (String channelKey : scopeObj.keySet()) {
             JsonArray shareList = getArray(scopeObj, channelKey);
-            if (shareList == null || shareList.size() == 0) {
+            if (shareList == null || shareList.isEmpty()) {
                 continue;
             }
             JsonObject share = asObject(shareList.get(0));
