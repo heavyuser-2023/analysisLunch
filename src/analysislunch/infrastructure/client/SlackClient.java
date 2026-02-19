@@ -4,11 +4,12 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.logging.Logger;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+
+import lombok.extern.slf4j.Slf4j;
 
 import analysislunch.utils.HttpUtils;
 import analysislunch.utils.JsonUtils;
@@ -18,9 +19,8 @@ import analysislunch.utils.JsonUtils;
  *
  * <p>메시지 전송, 이미지 URL 기반 메시지, 파일 업로드 기능을 제공합니다.
  */
+@Slf4j
 public class SlackClient {
-
-    private static final Logger logger = Logger.getLogger(SlackClient.class.getName());
 
     private static final String API_GET_URL = "https://slack.com/api/files.getUploadURLExternal";
     private static final String API_COMPLETE = "https://slack.com/api/files.completeUploadExternal";
@@ -74,7 +74,7 @@ public class SlackClient {
         }
         String messageTs = JsonUtils.extract(response, "ts");
         if (messageTs == null) {
-            logger.warning("Slack 메시지 ts를 응답에서 찾을 수 없습니다.");
+            log.warn("Slack 메시지 ts를 응답에서 찾을 수 없습니다.");
         }
         return messageTs;
     }
@@ -123,7 +123,7 @@ public class SlackClient {
         }
         String messageTs = JsonUtils.extract(response, "ts");
         if (messageTs == null) {
-            logger.warning("Slack 메시지 ts를 응답에서 찾을 수 없습니다.");
+            log.warn("Slack 메시지 ts를 응답에서 찾을 수 없습니다.");
         }
         return messageTs;
     }
@@ -176,7 +176,7 @@ public class SlackClient {
         }
         String messageTs = JsonUtils.extractSlackShareTs(completeResponse);
         if (messageTs == null) {
-            logger.warning("Slack 스레드 ts를 응답에서 찾을 수 없습니다.");
+            log.warn("Slack 스레드 ts를 응답에서 찾을 수 없습니다.");
         }
         return messageTs;
     }
@@ -192,7 +192,7 @@ public class SlackClient {
             JsonObject json = GSON.fromJson(response, JsonObject.class);
             return json != null && json.has("ok") && json.get("ok").getAsBoolean();
         } catch (Exception e) {
-            logger.warning("응답 JSON 파싱 실패: " + e.getMessage());
+            log.warn("응답 JSON 파싱 실패: {}", e.getMessage());
             return false;
         }
     }

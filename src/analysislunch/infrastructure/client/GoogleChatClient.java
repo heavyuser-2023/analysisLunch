@@ -1,25 +1,26 @@
 package analysislunch.infrastructure.client;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.logging.Logger;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+
+import lombok.extern.slf4j.Slf4j;
+import analysislunch.utils.HttpUtils;
 
 /**
  * Google Chat Webhook API와 통신하는 클라이언트 클래스.
  *
  * <p>이미지와 텍스트가 포함된 카드 형식의 메시지를 Google Chat 공간에 전송합니다.
  */
+@Slf4j
 public class GoogleChatClient {
-
-    private static final Logger logger = Logger.getLogger(GoogleChatClient.class.getName());
 
     private static final Gson GSON = new Gson();
     private static final int HTTP_OK = 200;
@@ -66,7 +67,7 @@ public class GoogleChatClient {
             String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
             throw new IOException("Google Chat 전송 실패 (" + responseCode + "): " + error);
         }
-        logger.info("Google Chat 메시지 전송 성공");
+        log.info("Google Chat 카드 전송 완료 (threadKey: {})", threadKey);
     }
 
     /**

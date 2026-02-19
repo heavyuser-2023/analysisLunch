@@ -1,5 +1,10 @@
 package analysislunch.domain.service;
 
+import java.io.File;
+import java.io.IOException;
+
+import lombok.extern.slf4j.Slf4j;
+
 import analysislunch.config.AppConfig;
 import analysislunch.domain.model.MenuInfo;
 import analysislunch.infrastructure.client.GeminiClient;
@@ -8,19 +13,14 @@ import analysislunch.infrastructure.client.GoogleChatClient;
 import analysislunch.infrastructure.client.SlackClient;
 import analysislunch.infrastructure.crawler.BlogCrawler;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.logging.Logger;
-
 /**
  * 점심 메뉴 분석 전체 흐름을 조율하는 서비스 클래스.
  *
  * <p>블로그 크롤링 → 이미지 다운로드 → 메뉴 추출 → 이미지 생성 → 칼로리 분석
  * → Slack/Google Chat 전송 → 해시 업데이트 순서로 실행됩니다.
  */
+@Slf4j
 public class LunchFlowService {
-
-    private static final Logger logger = Logger.getLogger(LunchFlowService.class.getName());
 
     private static final String BLOG_URL = "https://m.blog.naver.com/yjm3038/222191646255";
     private static final String TEMP_ORIGINAL_FILE = "temp_original.png";
@@ -79,15 +79,15 @@ public class LunchFlowService {
      */
     public void run() {
         try {
-            logger.info("처리 시작...");
+            log.info("처리 시작...");
 
             // 1. 블로그에서 이미지 URL 추출
-            logger.info("블로그에서 이미지 URL 추출 중...");
+            log.info("블로그에서 이미지 URL 추출 중...");
             String imageUrl = blogCrawler.extractImageUrlFromBlog(BLOG_URL);
-            logger.info("이미지 URL 발견: " + imageUrl);
+            log.info("이미지 URL 발견: {}", imageUrl);
 
             // 2. 이미지 다운로드
-            logger.info("이미지 다운로드 중...");
+            log.info("이미지 다운로드 중...");
             File originalFile = new File(TEMP_ORIGINAL_FILE);
             imageService.download(imageUrl, originalFile);
 
@@ -95,38 +95,38 @@ public class LunchFlowService {
             String currentHash = imageService.calculateFileHash(originalFile);
             String lastHash = imageService.loadLastHash();
             if (currentHash.equals(lastHash)) {
-                logger.info("✅ 이미지가 변경되지 않았습니다. 작업을 중단합니다. (Hash: " + currentHash + ")");
+                log.info("✅ 이미지가 변경되지 않았습니다. 작업을 중단합니다. (Hash: {})", currentHash);
                 return;
             }
-            logger.info("🔄 이미지가 변경되었습니다. (새 Hash: " + currentHash + ")");
+            log.info("🔄 이미지가 변경되었습니다. (새 Hash: {})", currentHash);
 
             // 4. 이미지 전처리 (투명 배경 → 흰색 배경)
-            logger.info("이미지 전처리 중 (흰색 배경 추가)...");
+            log.info("이미지 전처리 중 (흰색 배경 추가)...");
             File processedFile = new File(TEMP_PROCESSED_FILE);
             imageService.convertPngToWhiteBgJpg(originalFile, processedFile);
 
             // 5. 이미지에서 메뉴 텍스트 추출
-            logger.info("이미지에서 메뉴 텍스트 추출 중...");
+            log.info("이미지에서 메뉴 텍스트 추출 중...");
             MenuInfo menuInfo = geminiClient.extractMenuInfo(processedFile);
-            logger.info("추출된 날짜: " + menuInfo.date());
-            logger.info("추출된 메뉴: " + menuInfo.menu());
+            log.info("추출된 날짜: {}", menuInfo.date());
+            log.info("추출된 메뉴: {}", menuInfo.menu());
 
             // 6. 식판 이미지 생성
-            logger.info("Gemini로 식판 이미지 생성 중...");
+            log.info("Gemini로 식판 이미지 생성 중...");
             File generatedImage = geminiClient.generateFoodImage(menuInfo.menu());
 
             // 7. 칼로리 분석
-            logger.info("칼로리 분석 중...");
+            log.info("칼로리 분석 중...");
             String calorieAnalysis = geminiClient.analyzeCalories(generatedImage, menuInfo.menu());
-            logger.info(calorieAnalysis);
+            log.info("{}", calorieAnalysis);
 
             // 8. 칼로리 카드 이미지 생성
-            logger.info("칼로리 카드 이미지 생성 중...");
+            log.info("칼로리 카드 이미지 생성 중...");
             File calorieCardFile = new File(CALORIE_CARD_FILE);
             imageService.createCalorieCard(calorieAnalysis, calorieCardFile);
 
             // 9. GitHub에 이미지 업로드 (Slack/Google Chat URL 확보)
-            logger.info("GitHub에 이미지 업로드 중...");
+            log.info("GitHub에 이미지 업로드 중...");
             String title = menuInfo.date() + MENU_TITLE_SUFFIX;
             long timestamp = System.currentTimeMillis();
             String foodImageName = FOOD_IMAGE_PREFIX + timestamp + IMAGE_EXTENSION;
@@ -137,36 +137,36 @@ public class LunchFlowService {
             String cardImageUrl = gitHubClient.getRawUrl(cardImageName);
 
             // 10. Slack 전송 (식판 이미지 → 칼로리 카드 답글)
-            logger.info("Slack에 전송 중...");
+            log.info("Slack에 전송 중...");
             String slackMessage = "📢 *" + title + "*\n\n AI가 생성한 이미지 입니다. 실제 음식과 다를 수 있습니다.\n\n" + menuInfo.menu();
             String slackThreadTs = slackClient.postImageMessage(
                 config.getChannelId(), slackMessage, foodImageUrl, null
             );
             if (slackThreadTs == null) {
-                logger.warning("Slack 부모 스레드 ts가 없습니다. 메시지가 별도로 전송됩니다.");
+                log.warn("Slack 부모 스레드 ts가 없습니다. 메시지가 별도로 전송됩니다.");
             }
             slackClient.postImageMessage(config.getChannelId(), "📊 *상세 칼로리 분석표*", cardImageUrl, slackThreadTs);
-            logger.info("✅ Slack 스레드 전송 완료.");
+            log.info("✅ Slack 스레드 전송 완료.");
 
             // 11. Google Chat 전송
-            logger.info("Google Chat에 전송 중...");
+            log.info("Google Chat에 전송 중...");
             String chatThreadKey = "lunch-" + System.currentTimeMillis();
             googleChatClient.sendCard(foodImageUrl, title, slackMessage, chatThreadKey);
-            logger.info("✅ Google Chat 식판 이미지 전송 완료.");
+            log.info("✅ Google Chat 식판 이미지 전송 완료.");
 
             waitForGoogleChatOrder();
 
             googleChatClient.sendCard(cardImageUrl, "상세 칼로리 분석", "📊 *상세 칼로리 분석표*", chatThreadKey);
-            logger.info("✅ Google Chat 칼로리 카드 전송 완료.");
+            log.info("✅ Google Chat 칼로리 카드 전송 완료.");
 
             // 12. 해시 저장 및 업로드 (모든 작업 성공 후)
-            logger.info("🔄 모든 작업 완료. 해시 업데이트 중...");
+            log.info("🔄 모든 작업 완료. 해시 업데이트 중...");
             imageService.saveHash(currentHash);
             gitHubClient.uploadTextFile(currentHash, HASH_FILE);
-            logger.info("✅ 작업이 성공적으로 완료되었습니다.");
+            log.info("✅ 작업이 성공적으로 완료되었습니다.");
 
         } catch (IOException e) {
-            logger.severe("❌ 오류 발생: " + e.getMessage());
+            log.error("❌ 오류 발생: {}", e.getMessage());
         } finally {
             cleanupTempFiles();
         }
@@ -180,7 +180,7 @@ public class LunchFlowService {
             Thread.sleep(GOOGLE_CHAT_SEND_DELAY_MS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            logger.warning("Google Chat 전송 대기 중 인터럽트 발생: " + e.getMessage());
+            log.warn("Google Chat 전송 대기 중 인터럽트 발생: {}", e.getMessage());
         }
     }
 

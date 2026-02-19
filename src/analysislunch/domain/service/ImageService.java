@@ -20,15 +20,15 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.logging.Logger;
 import javax.imageio.ImageIO;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 이미지 다운로드, 변환, 해시 관리, 칼로리 카드 생성을 담당하는 서비스 클래스.
  */
+@Slf4j
 public class ImageService {
-
-    private static final Logger logger = Logger.getLogger(ImageService.class.getName());
 
     private static final String HASH_FILE = "menu_hash.txt";
     private static final String HASH_ALGORITHM = "SHA-256";
@@ -57,23 +57,24 @@ public class ImageService {
     private static final float FONT_SIZE_SUBTEXT = 18f;
     private static final float FONT_SIZE_ROW = 24f;
     private static final float FONT_SIZE_TOTAL = 32f;
+    private static final int FONT_SIZE_FALLBACK = 12;
     private static final int SEPARATOR_STROKE_WIDTH = 2;
     private static final int HEADER_TEXT_Y = 75;
     private static final int SUBTEXT_X_OFFSET = 330;
 
-    // 카드 배경 색상
-    private static final Color COLOR_BG_DARK    = new Color(33, 37, 41);
-    private static final Color COLOR_BG_HEADER  = new Color(44, 48, 52);
-    // 헤더 텍스트 색상
-    private static final Color COLOR_ACCENT_YELLOW  = new Color(255, 193, 7);
-    private static final Color COLOR_TEXT_MUTED     = new Color(173, 181, 189);
-    // 행 색상
-    private static final Color COLOR_ROW_STRIPE  = new Color(255, 255, 255, 10);
-    private static final Color COLOR_TEXT_LIGHT  = new Color(248, 249, 250);
+    // --- 카드 배경 색상 ---
+    private static final Color COLOR_BG_DARK = new Color(33, 37, 41);
+    private static final Color COLOR_BG_HEADER = new Color(44, 48, 52);
+    // --- 헤더 텍스트 색상 ---
+    private static final Color COLOR_ACCENT_YELLOW = new Color(255, 193, 7);
+    private static final Color COLOR_TEXT_MUTED = new Color(173, 181, 189);
+    // --- 행 색상 ---
+    private static final Color COLOR_ROW_STRIPE = new Color(255, 255, 255, 10);
+    private static final Color COLOR_TEXT_LIGHT = new Color(248, 249, 250);
     private static final Color COLOR_ACCENT_CYAN = new Color(13, 202, 240);
-    // 구분선 / 합계 색상
-    private static final Color COLOR_SEPARATOR   = new Color(73, 80, 87);
-    private static final Color COLOR_TOTAL_RED   = new Color(255, 99, 71);
+    // --- 구분선 / 합계 색상 ---
+    private static final Color COLOR_SEPARATOR = new Color(73, 80, 87);
+    private static final Color COLOR_TOTAL_RED = new Color(255, 99, 71);
 
     /**
      * 이미지 URL에서 파일을 다운로드합니다.
@@ -133,7 +134,7 @@ public class ImageService {
         try (BufferedReader br = new BufferedReader(new FileReader(file))) {
             return br.readLine();
         } catch (IOException e) {
-            logger.warning("해시 파일 읽기 실패: " + e.getMessage());
+            log.warn("해시 파일 읽기 실패: {}", e.getMessage());
             return null;
         }
     }
@@ -147,7 +148,7 @@ public class ImageService {
         try (FileWriter fw = new FileWriter(HASH_FILE)) {
             fw.write(hash);
         } catch (IOException e) {
-            logger.warning("해시 파일 저장 실패: " + e.getMessage());
+            log.warn("해시 파일 저장 실패: {}", e.getMessage());
         }
     }
 
@@ -185,7 +186,7 @@ public class ImageService {
     public void deleteFile(String path) {
         File file = new File(path);
         if (file.exists() && !file.delete()) {
-            logger.warning("파일 삭제 실패: " + path);
+            log.warn("파일 삭제 실패: {}", path);
         }
     }
 
@@ -232,13 +233,13 @@ public class ImageService {
     private Font loadFont() {
         try (InputStream is = getClass().getClassLoader().getResourceAsStream(FONT_FILE_PATH)) {
             if (is == null) {
-                logger.warning("폰트 리소스를 찾을 수 없습니다: " + FONT_FILE_PATH + " — 기본 폰트 사용");
-                return new Font(FALLBACK_FONT_FAMILY, Font.PLAIN, 12);
+                log.warn("폰트 리소스를 찾을 수 없습니다: {} — 기본 폰트 사용", FONT_FILE_PATH);
+                return new Font(FALLBACK_FONT_FAMILY, Font.PLAIN, FONT_SIZE_FALLBACK);
             }
             return Font.createFont(Font.TRUETYPE_FONT, is);
         } catch (java.awt.FontFormatException | IOException e) {
-            logger.warning("폰트 로드 실패, 기본 폰트 사용: " + e.getMessage());
-            return new Font(FALLBACK_FONT_FAMILY, Font.PLAIN, 12);
+            log.warn("폰트 로드 실패, 기본 폰트 사용: {}", e.getMessage());
+            return new Font(FALLBACK_FONT_FAMILY, Font.PLAIN, FONT_SIZE_FALLBACK);
         }
     }
 
