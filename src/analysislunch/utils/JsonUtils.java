@@ -1,12 +1,12 @@
 package analysislunch.utils;
 
+import java.util.logging.Logger;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
-import java.util.logging.Logger;
-
 
 /**
  * JSON 파싱 유틸리티 클래스.

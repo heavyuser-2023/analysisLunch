@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 public class HttpUtils {
 
     private static final int BUFFER_SIZE = 8192;
+    private static final int HTTP_OK = 200;
     private static final int HTTP_ERROR_THRESHOLD = 400;
 
     private HttpUtils() {
@@ -108,7 +109,7 @@ public class HttpUtils {
             }
         }
 
-        if (conn.getResponseCode() != 200) {
+        if (conn.getResponseCode() != HTTP_OK) {
             throw new IOException("바이너리 업로드 실패 (응답 코드: " + conn.getResponseCode() + ")");
         }
     }

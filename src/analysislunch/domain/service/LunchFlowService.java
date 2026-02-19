@@ -1,5 +1,9 @@
 package analysislunch.domain.service;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.logging.Logger;
+
 import analysislunch.config.AppConfig;
 import analysislunch.domain.model.MenuInfo;
 import analysislunch.infrastructure.client.GeminiClient;
@@ -7,10 +11,6 @@ import analysislunch.infrastructure.client.GitHubClient;
 import analysislunch.infrastructure.client.GoogleChatClient;
 import analysislunch.infrastructure.client.SlackClient;
 import analysislunch.infrastructure.crawler.BlogCrawler;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.logging.Logger;
 
 /**
  * 점심 메뉴 분석 전체 흐름을 조율하는 서비스 클래스.

@@ -61,19 +61,19 @@ public class ImageService {
     private static final int HEADER_TEXT_Y = 75;
     private static final int SUBTEXT_X_OFFSET = 330;
 
-    // 카드 배경 색상
-    private static final Color COLOR_BG_DARK    = new Color(33, 37, 41);
-    private static final Color COLOR_BG_HEADER  = new Color(44, 48, 52);
-    // 헤더 텍스트 색상
-    private static final Color COLOR_ACCENT_YELLOW  = new Color(255, 193, 7);
-    private static final Color COLOR_TEXT_MUTED     = new Color(173, 181, 189);
-    // 행 색상
-    private static final Color COLOR_ROW_STRIPE  = new Color(255, 255, 255, 10);
-    private static final Color COLOR_TEXT_LIGHT  = new Color(248, 249, 250);
+    // --- 카드 배경 색상 ---
+    private static final Color COLOR_BG_DARK = new Color(33, 37, 41);
+    private static final Color COLOR_BG_HEADER = new Color(44, 48, 52);
+    // --- 헤더 텍스트 색상 ---
+    private static final Color COLOR_ACCENT_YELLOW = new Color(255, 193, 7);
+    private static final Color COLOR_TEXT_MUTED = new Color(173, 181, 189);
+    // --- 행 색상 ---
+    private static final Color COLOR_ROW_STRIPE = new Color(255, 255, 255, 10);
+    private static final Color COLOR_TEXT_LIGHT = new Color(248, 249, 250);
     private static final Color COLOR_ACCENT_CYAN = new Color(13, 202, 240);
-    // 구분선 / 합계 색상
-    private static final Color COLOR_SEPARATOR   = new Color(73, 80, 87);
-    private static final Color COLOR_TOTAL_RED   = new Color(255, 99, 71);
+    // --- 구분선 / 합계 색상 ---
+    private static final Color COLOR_SEPARATOR = new Color(73, 80, 87);
+    private static final Color COLOR_TOTAL_RED = new Color(255, 99, 71);
 
     /**
      * 이미지 URL에서 파일을 다운로드합니다.
