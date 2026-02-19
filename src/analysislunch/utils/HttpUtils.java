@@ -112,9 +112,10 @@ public class HttpUtils {
             }
         }
 
-        if (conn.getResponseCode() != HTTP_OK) {
-            log.error("바이너리 업로드 실패 (응답 코드: {})", conn.getResponseCode());
-            throw new IOException("바이너리 업로드 실패 (응답 코드: " + conn.getResponseCode() + ")");
+        int responseCode = conn.getResponseCode();
+        if (responseCode != HTTP_OK) {
+            log.error("바이너리 업로드 실패 (응답 코드: {})", responseCode);
+            throw new IOException("바이너리 업로드 실패 (응답 코드: " + responseCode + ")");
         }
     }
 

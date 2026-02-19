@@ -57,6 +57,7 @@ public class ImageService {
     private static final float FONT_SIZE_SUBTEXT = 18f;
     private static final float FONT_SIZE_ROW = 24f;
     private static final float FONT_SIZE_TOTAL = 32f;
+    private static final int FONT_SIZE_FALLBACK = 12;
     private static final int SEPARATOR_STROKE_WIDTH = 2;
     private static final int HEADER_TEXT_Y = 75;
     private static final int SUBTEXT_X_OFFSET = 330;
@@ -233,12 +234,12 @@ public class ImageService {
         try (InputStream is = getClass().getClassLoader().getResourceAsStream(FONT_FILE_PATH)) {
             if (is == null) {
                 log.warn("폰트 리소스를 찾을 수 없습니다: {} — 기본 폰트 사용", FONT_FILE_PATH);
-                return new Font(FALLBACK_FONT_FAMILY, Font.PLAIN, 12);
+                return new Font(FALLBACK_FONT_FAMILY, Font.PLAIN, FONT_SIZE_FALLBACK);
             }
             return Font.createFont(Font.TRUETYPE_FONT, is);
         } catch (java.awt.FontFormatException | IOException e) {
             log.warn("폰트 로드 실패, 기본 폰트 사용: {}", e.getMessage());
-            return new Font(FALLBACK_FONT_FAMILY, Font.PLAIN, 12);
+            return new Font(FALLBACK_FONT_FAMILY, Font.PLAIN, FONT_SIZE_FALLBACK);
         }
     }
 
