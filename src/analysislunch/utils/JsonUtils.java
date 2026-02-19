@@ -1,6 +1,5 @@
 package analysislunch.utils;
 
-import java.util.logging.Logger;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -8,14 +7,15 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * JSON 파싱 유틸리티 클래스.
  *
  * <p>Gemini API 응답, Slack API 응답 등의 JSON 데이터에서 필요한 값을 추출합니다.
  */
-public class JsonUtils {
-
-    private static final Logger logger = Logger.getLogger(JsonUtils.class.getName());
+@Slf4j
+public final class JsonUtils {
     private static final String FALLBACK_TEXT = "분석 결과 없음";
 
     private JsonUtils() {
@@ -37,7 +37,7 @@ public class JsonUtils {
             }
             return jsonElementToString(root.get(key));
         } catch (JsonParseException | IllegalStateException e) {
-            logger.warning("JSON에서 키 '" + key + "' 추출 실패: " + e.getMessage());
+            log.warn("JSON에서 키 '{}' 추출 실패: {}", key, e.getMessage());
             return null;
         }
     }
@@ -77,7 +77,7 @@ public class JsonUtils {
             }
             return FALLBACK_TEXT;
         } catch (JsonParseException | IllegalStateException e) {
-            logger.warning("Gemini 응답 텍스트 추출 실패: " + e.getMessage());
+            log.warn("Gemini 응답 텍스트 추출 실패: {}", e.getMessage());
             return FALLBACK_TEXT;
         }
     }
@@ -124,7 +124,7 @@ public class JsonUtils {
             }
             return null;
         } catch (JsonParseException | IllegalStateException e) {
-            logger.warning("Gemini 응답 이미지 데이터 추출 실패: " + e.getMessage());
+            log.warn("Gemini 응답 이미지 데이터 추출 실패: {}", e.getMessage());
             return null;
         }
     }
@@ -162,7 +162,7 @@ public class JsonUtils {
             }
             return null;
         } catch (JsonParseException | IllegalStateException e) {
-            logger.warning("Slack 파일 공유 타임스탬프 추출 실패: " + e.getMessage());
+            log.warn("Slack 파일 공유 타임스탬프 추출 실패: {}", e.getMessage());
             return null;
         }
     }

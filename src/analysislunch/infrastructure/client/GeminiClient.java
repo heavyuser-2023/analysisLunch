@@ -5,11 +5,12 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Base64;
-import java.util.logging.Logger;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+
+import lombok.extern.slf4j.Slf4j;
 
 import analysislunch.domain.model.MenuInfo;
 import analysislunch.utils.HttpUtils;
@@ -20,9 +21,8 @@ import analysislunch.utils.JsonUtils;
  *
  * <p>메뉴 이미지 OCR, 음식 이미지 생성, 칼로리 분석 기능을 제공합니다.
  */
+@Slf4j
 public class GeminiClient {
-
-    private static final Logger logger = Logger.getLogger(GeminiClient.class.getName());
 
     private static final String API_URL_TEXT =
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
@@ -63,7 +63,7 @@ public class GeminiClient {
         String jsonBody = GSON.toJson(buildTextWithImageRequest(prompt, base64Image, MIME_TYPE_JPEG));
 
         String response = HttpUtils.postJson(API_URL_TEXT + "?key=" + apiKey, null, jsonBody);
-        logger.info("메뉴 텍스트 추출 응답 수신 완료");
+        log.info("메뉴 텍스트 추출 응답 수신 완료");
 
         String fullText = JsonUtils.extractGeminiText(response);
         String[] lines = fullText.trim().split("\n", 2);
@@ -129,7 +129,7 @@ public class GeminiClient {
         String jsonBody = GSON.toJson(requestBody);
 
         String response = HttpUtils.postJson(API_URL_IMAGE + "?key=" + apiKey, null, jsonBody);
-        logger.info("이미지 생성 응답 수신 완료 (길이: " + response.length() + ")");
+        log.info("이미지 생성 응답 수신 완료 (길이: {})", response.length());
 
         String base64Image = JsonUtils.extractImageData(response);
         if (base64Image == null || base64Image.isEmpty()) {
@@ -144,7 +144,7 @@ public class GeminiClient {
             fos.write(imageBytes);
         }
 
-        logger.info("생성된 이미지 저장 완료: " + outputFile.getAbsolutePath());
+        log.info("생성된 이미지 저장 완료: {}", outputFile.getAbsolutePath());
         return outputFile;
     }
 
@@ -185,7 +185,7 @@ public class GeminiClient {
         String jsonBody = GSON.toJson(buildTextWithImageRequest(prompt, base64Image, MIME_TYPE_PNG));
 
         String response = HttpUtils.postJson(API_URL_TEXT + "?key=" + apiKey, null, jsonBody);
-        logger.info("칼로리 분석 응답 수신 완료");
+        log.info("칼로리 분석 응답 수신 완료");
 
         return JsonUtils.extractGeminiText(response);
     }

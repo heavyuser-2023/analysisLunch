@@ -11,11 +11,14 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * HTTP 요청을 수행하는 유틸리티 클래스.
  *
  * <p>GET, POST(JSON), 바이너리 업로드 등의 공통 HTTP 작업을 제공합니다.
  */
+@Slf4j
 public class HttpUtils {
 
     private static final int BUFFER_SIZE = 8192;
@@ -110,6 +113,7 @@ public class HttpUtils {
         }
 
         if (conn.getResponseCode() != HTTP_OK) {
+            log.error("바이너리 업로드 실패 (응답 코드: {})", conn.getResponseCode());
             throw new IOException("바이너리 업로드 실패 (응답 코드: " + conn.getResponseCode() + ")");
         }
     }

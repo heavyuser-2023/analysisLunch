@@ -1,7 +1,6 @@
 package analysislunch;
 
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import lombok.extern.slf4j.Slf4j;
 
 import analysislunch.config.AppConfig;
 import analysislunch.domain.service.ImageService;
@@ -18,9 +17,8 @@ import analysislunch.infrastructure.crawler.BlogCrawler;
  *
  * <p>환경 변수를 로드하고 의존성을 초기화한 뒤 {@link LunchFlowService}를 실행합니다.
  */
+@Slf4j
 public class Main {
-
-    private static final Logger logger = Logger.getLogger(Main.class.getName());
 
     /**
      * 애플리케이션 메인 메서드.
@@ -28,7 +26,7 @@ public class Main {
      * @param args 커맨드라인 인수 (사용하지 않음)
      */
     public static void main(String[] args) {
-        logger.info("🚀 프로그램 시작: 점심 메뉴 확인");
+        log.info("🚀 프로그램 시작: 점심 메뉴 확인");
 
         try {
             // 1. 설정 로드
@@ -58,9 +56,9 @@ public class Main {
 
 
         } catch (IllegalStateException e) {
-            logger.log(Level.SEVERE, "❌ 초기화 실패", e);
+            log.error("❌ 초기화 실패", e);
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "❌ 치명적 오류 발생: [" + e.getClass().getSimpleName() + "]", e);
+            log.error("❌ 치명적 오류 발생: [{}]", e.getClass().getSimpleName(), e);
         }
     }
 }

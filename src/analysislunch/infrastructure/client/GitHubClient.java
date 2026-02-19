@@ -8,10 +8,11 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Base64;
-import java.util.logging.Logger;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+
+import lombok.extern.slf4j.Slf4j;
 
 import analysislunch.utils.JsonUtils;
 
@@ -20,9 +21,8 @@ import analysislunch.utils.JsonUtils;
  *
  * <p>이미지 및 텍스트 파일을 GitHub 저장소에 업로드하고 Raw URL을 생성합니다.
  */
+@Slf4j
 public class GitHubClient {
-
-    private static final Logger logger = Logger.getLogger(GitHubClient.class.getName());
 
     private static final String API_BASE = "https://api.github.com";
     private static final String BRANCH = "main";
@@ -75,7 +75,7 @@ public class GitHubClient {
         }
 
         uploadToGitHub(apiUrl, GSON.toJson(body));
-        logger.info("GitHub 업로드 성공: " + path);
+        log.info("GitHub 업로드 성공: {}", path);
     }
 
     /**
@@ -102,7 +102,7 @@ public class GitHubClient {
         }
 
         uploadToGitHub(apiUrl, GSON.toJson(body));
-        logger.info("GitHub 업로드 성공: " + filename);
+        log.info("GitHub 업로드 성공: {}", filename);
     }
 
     /**
@@ -136,7 +136,7 @@ public class GitHubClient {
                 return JsonUtils.extract(response, "sha");
             }
         } catch (IOException e) {
-            logger.fine("파일 SHA 조회 실패 (신규 파일로 처리): " + e.getMessage());
+            log.debug("파일 SHA 조회 실패 (신규 파일로 처리): {}", e.getMessage());
         }
         return null;
     }
