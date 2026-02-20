@@ -1,0 +1,11 @@
+
+sourceSets {
+    test {
+        java {
+            srcDirs = ['src']
+            include 'FontTest.java'
+            include 'analysislunch/domain/service/ImageService.java'
+        }
+    }
+}
+

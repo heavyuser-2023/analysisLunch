@@ -231,12 +231,14 @@ public class ImageService {
      * @return 로드된 {@link Font}
      */
     private Font loadFont() {
-        try (InputStream is = getClass().getClassLoader().getResourceAsStream(FONT_FILE_PATH)) {
-            if (is == null) {
-                log.warn("폰트 리소스를 찾을 수 없습니다: {} — 기본 폰트 사용", FONT_FILE_PATH);
-                return new Font(FALLBACK_FONT_FAMILY, Font.PLAIN, FONT_SIZE_FALLBACK);
-            }
-            return Font.createFont(Font.TRUETYPE_FONT, is);
+        File fontFile = new File(FONT_FILE_PATH);
+        if (!fontFile.exists() || !fontFile.canRead()) {
+            log.warn("폰트 파일을 찾을 수 없거나 읽을 수 없습니다: {} — 기본 폰트 사용", fontFile.getAbsolutePath());
+            return new Font(FALLBACK_FONT_FAMILY, Font.PLAIN, FONT_SIZE_FALLBACK);
+        }
+
+        try (FileInputStream fis = new FileInputStream(fontFile)) {
+            return Font.createFont(Font.TRUETYPE_FONT, fis);
         } catch (java.awt.FontFormatException | IOException e) {
             log.warn("폰트 로드 실패, 기본 폰트 사용: {}", e.getMessage());
             return new Font(FALLBACK_FONT_FAMILY, Font.PLAIN, FONT_SIZE_FALLBACK);
