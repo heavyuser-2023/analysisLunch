@@ -27,7 +27,7 @@ public class GeminiClient {
     private static final String API_URL_TEXT =
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
     private static final String API_URL_IMAGE =
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent";
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent";
     private static final String TEMP_GENERATED_FILE = "generated_food.png";
     private static final String MIME_TYPE_JPEG = "image/jpeg";
     private static final String MIME_TYPE_PNG = "image/png";
@@ -99,6 +99,7 @@ public class GeminiClient {
             - 반찬이 많으면 한 칸에 여러 음식 배치 가능
             - 식판에 음식이 담긴 모습이 사람이 실제 담은것 처럼
               (밥, 반찬이 정형적이지 않게 배치, 반찬이 조금 넘치기도 하고 )
+            - 식탁은 흰색 테이블 깔끔한 6인용 테이블
 
             ⛔⛔⛔ 절대 금지 (위반 시 실패) ⛔⛔⛔
             1. 정의된 6칸 외 추가 칸 생성 금지
