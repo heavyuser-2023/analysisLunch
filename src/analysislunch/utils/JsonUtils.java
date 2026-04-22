@@ -16,7 +16,7 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 public final class JsonUtils {
-    private static final String FALLBACK_TEXT = "분석 결과 없음";
+    public static final String FALLBACK_TEXT = "분석 결과 없음";
 
     private JsonUtils() {
         // 유틸리티 클래스 - 인스턴스화 금지

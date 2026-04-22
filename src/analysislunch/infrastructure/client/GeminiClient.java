@@ -25,7 +25,7 @@ import analysislunch.utils.JsonUtils;
 public class GeminiClient {
 
     private static final String API_URL_TEXT =
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
     private static final String API_URL_IMAGE =
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent";
     private static final String TEMP_GENERATED_FILE = "generated_food.png";
@@ -64,8 +64,15 @@ public class GeminiClient {
 
         String response = HttpUtils.postJson(API_URL_TEXT + "?key=" + apiKey, null, jsonBody);
         log.info("메뉴 텍스트 추출 응답 수신 완료");
+        log.debug("메뉴 OCR 원본 응답: {}", response);
 
         String fullText = JsonUtils.extractGeminiText(response);
+        if (fullText == null || fullText.isBlank() || JsonUtils.FALLBACK_TEXT.equals(fullText.trim())) {
+            log.warn("메뉴 OCR 실패. Gemini 원본 응답: {}",
+                response.substring(0, Math.min(2000, response.length())));
+            throw new IOException("메뉴 OCR 실패: Gemini 응답에서 유효한 텍스트를 추출할 수 없습니다.");
+        }
+
         String[] lines = fullText.trim().split("\n", 2);
         if (lines.length >= 2) {
             return new MenuInfo(lines[0].trim(), lines[1].trim());
