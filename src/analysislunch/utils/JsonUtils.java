@@ -129,62 +129,6 @@ public final class JsonUtils {
         }
     }
 
-    /**
-     * Slack 파일 업로드 완료 응답에서 공유 메시지의 타임스탬프(ts)를 추출합니다.
-     *
-     * @param json Slack files.completeUploadExternal API 응답 JSON 문자열
-     * @return 메시지 타임스탬프 문자열, 없거나 파싱 실패 시 {@code null}
-     */
-    public static String extractSlackShareTs(String json) {
-        try {
-            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-            JsonArray files = getArray(root, "files");
-            if (files == null || files.isEmpty()) {
-                return null;
-            }
-            for (JsonElement fileEl : files) {
-                JsonObject file = asObject(fileEl);
-                if (file == null) {
-                    continue;
-                }
-                JsonObject shares = getObject(file, "shares");
-                if (shares == null) {
-                    continue;
-                }
-                String ts = extractShareTsFromScope(shares, "public");
-                if (ts != null) {
-                    return ts;
-                }
-                ts = extractShareTsFromScope(shares, "private");
-                if (ts != null) {
-                    return ts;
-                }
-            }
-            return null;
-        } catch (JsonParseException | IllegalStateException e) {
-            log.warn("Slack 파일 공유 타임스탬프 추출 실패: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private static String extractShareTsFromScope(JsonObject shares, String scope) {
-        JsonObject scopeObj = getObject(shares, scope);
-        if (scopeObj == null) {
-            return null;
-        }
-        for (String channelKey : scopeObj.keySet()) {
-            JsonArray shareList = getArray(scopeObj, channelKey);
-            if (shareList == null || shareList.isEmpty()) {
-                continue;
-            }
-            JsonObject share = asObject(shareList.get(0));
-            if (share != null && share.has("ts")) {
-                return jsonElementToString(share.get("ts"));
-            }
-        }
-        return null;
-    }
-
     private static JsonObject getObject(JsonObject obj, String key) {
         if (obj == null || !obj.has(key) || obj.get(key).isJsonNull()) {
             return null;

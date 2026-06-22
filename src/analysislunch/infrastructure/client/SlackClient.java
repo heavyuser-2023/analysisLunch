@@ -25,7 +25,6 @@ public class SlackClient {
     private static final String API_GET_URL = "https://slack.com/api/files.getUploadURLExternal";
     private static final String API_COMPLETE = "https://slack.com/api/files.completeUploadExternal";
     private static final String API_POST_MESSAGE = "https://slack.com/api/chat.postMessage";
-    private static final String DEFAULT_ALT_TEXT = "lunch image";
 
     private static final Gson GSON = new Gson();
 
@@ -80,81 +79,35 @@ public class SlackClient {
     }
 
     /**
-     * 이미지 URL을 포함한 Slack 블록 메시지를 전송합니다.
-     *
-     * @param channelId 메시지를 전송할 채널 ID
-     * @param text      메시지 텍스트 (마크다운 지원)
-     * @param imageUrl  표시할 이미지 URL
-     * @param threadTs  답글을 달 스레드의 타임스탬프 (null이면 새 메시지)
-     * @return 전송된 메시지의 타임스탬프(ts), 실패 시 {@code null}
-     * @throws IOException API 호출 실패 시
-     */
-    public String postImageMessage(String channelId, String text, String imageUrl, String threadTs)
-            throws IOException {
-        String messageText = (text == null || text.isEmpty()) ? DEFAULT_ALT_TEXT : text;
-
-        JsonArray blocks = new JsonArray();
-        if (text != null && !text.isEmpty()) {
-            JsonObject sectionText = new JsonObject();
-            sectionText.addProperty("type", "mrkdwn");
-            sectionText.addProperty("text", text);
-            JsonObject section = new JsonObject();
-            section.addProperty("type", "section");
-            section.add("text", sectionText);
-            blocks.add(section);
-        }
-        JsonObject imageBlock = new JsonObject();
-        imageBlock.addProperty("type", "image");
-        imageBlock.addProperty("image_url", imageUrl);
-        imageBlock.addProperty("alt_text", DEFAULT_ALT_TEXT);
-        blocks.add(imageBlock);
-
-        JsonObject body = new JsonObject();
-        body.addProperty("channel", channelId);
-        body.addProperty("text", messageText);
-        body.add("blocks", blocks);
-        if (threadTs != null && !threadTs.isEmpty()) {
-            body.addProperty("thread_ts", threadTs);
-        }
-
-        String response = HttpUtils.postJson(API_POST_MESSAGE, token, GSON.toJson(body));
-        if (!isResponseOk(response)) {
-            throw new IOException("이미지 메시지 전송 실패: " + response);
-        }
-        String messageTs = JsonUtils.extract(response, "ts");
-        if (messageTs == null) {
-            log.warn("Slack 메시지 ts를 응답에서 찾을 수 없습니다.");
-        }
-        return messageTs;
-    }
-
-    /**
      * Slack에 파일을 업로드합니다.
      *
      * @param channelId      업로드할 채널 ID
      * @param file           업로드할 파일
      * @param title          파일 제목
      * @param initialComment 파일과 함께 표시할 초기 코멘트
-     * @return 업로드된 파일의 공유 메시지 타임스탬프(ts), 실패 시 {@code null}
      * @throws IOException API 호출 실패 시
      */
-    public String uploadFile(String channelId, File file, String title, String initialComment)
+    public void uploadFile(String channelId, File file, String title, String initialComment)
             throws IOException {
-        return uploadFile(channelId, file, title, initialComment, null);
+        uploadFile(channelId, file, title, initialComment, null);
     }
 
     /**
      * Slack에 파일을 업로드합니다 (스레드 답글 지원).
+     *
+     * <p>{@code threadTs}를 지정하면 해당 메시지의 답글로 업로드됩니다. 스레드 부모는
+     * 항상 안정적인 ts를 반환하는 {@code chat.postMessage}로 만든 텍스트 메시지를
+     * 사용하세요({@code files.completeUploadExternal} 응답에는 공유 메시지 ts가
+     * 포함되지 않습니다).
      *
      * @param channelId      업로드할 채널 ID
      * @param file           업로드할 파일
      * @param title          파일 제목
      * @param initialComment 파일과 함께 표시할 초기 코멘트
      * @param threadTs       답글을 달 스레드의 타임스탬프 (null이면 새 메시지)
-     * @return 업로드된 파일의 공유 메시지 타임스탬프(ts), 실패 시 {@code null}
      * @throws IOException API 호출 실패 시
      */
-    public String uploadFile(String channelId, File file, String title, String initialComment, String threadTs)
+    public void uploadFile(String channelId, File file, String title, String initialComment, String threadTs)
             throws IOException {
         // 1단계: 업로드 URL 획득
         String getUrlResponse = callGetUploadUrl(file.getName(), file.length());
@@ -174,11 +127,6 @@ public class SlackClient {
         if (!isResponseOk(completeResponse)) {
             throw new IOException("업로드 완료 처리 실패: " + completeResponse);
         }
-        String messageTs = JsonUtils.extractSlackShareTs(completeResponse);
-        if (messageTs == null) {
-            log.warn("Slack 스레드 ts를 응답에서 찾을 수 없습니다.");
-        }
-        return messageTs;
     }
 
     /**
@@ -240,7 +188,9 @@ public class SlackClient {
         JsonObject body = new JsonObject();
         body.add("files", files);
         body.addProperty("channel_id", channelId);
-        body.addProperty("initial_comment", initialComment);
+        if (initialComment != null && !initialComment.isEmpty()) {
+            body.addProperty("initial_comment", initialComment);
+        }
         if (threadTs != null && !threadTs.isEmpty()) {
             body.addProperty("thread_ts", threadTs);
         }

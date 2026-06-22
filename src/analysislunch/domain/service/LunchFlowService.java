@@ -33,6 +33,8 @@ public class LunchFlowService {
     private static final String CARD_IMAGE_PREFIX = "lunch_card_";
     private static final String IMAGE_EXTENSION = ".png";
     private static final String MENU_TITLE_SUFFIX = " - 점심 메뉴";
+    private static final String CALORIE_CARD_TITLE = "상세 칼로리 분석";
+    private static final String CALORIE_CARD_COMMENT = "📊 *상세 칼로리 분석표*";
     private static final long GOOGLE_CHAT_SEND_DELAY_MS = 1000L;
 
     private final AppConfig config;
@@ -125,50 +127,105 @@ public class LunchFlowService {
             File calorieCardFile = new File(CALORIE_CARD_FILE);
             imageService.createCalorieCard(calorieAnalysis, calorieCardFile);
 
-            // 9. GitHub에 이미지 업로드 (Slack/Google Chat URL 확보)
-            log.info("GitHub에 이미지 업로드 중...");
+            // 9. 메시지 구성
             String title = menuInfo.date() + MENU_TITLE_SUFFIX;
-            long timestamp = System.currentTimeMillis();
-            String foodImageName = FOOD_IMAGE_PREFIX + timestamp + IMAGE_EXTENSION;
-            String cardImageName = CARD_IMAGE_PREFIX + timestamp + IMAGE_EXTENSION;
-            gitHubClient.uploadImage(generatedImage, foodImageName);
-            gitHubClient.uploadImage(calorieCardFile, cardImageName);
-            String foodImageUrl = gitHubClient.getRawUrl(foodImageName);
-            String cardImageUrl = gitHubClient.getRawUrl(cardImageName);
+            String foodMessage = "📢 *" + title + "*\n\n AI가 생성한 이미지 입니다. 실제 음식과 다를 수 있습니다.\n\n"
+                + menuInfo.menu();
 
-            // 10. Slack 전송 (식판 이미지 → 칼로리 카드 답글)
-            log.info("Slack에 전송 중...");
-            String slackMessage = "📢 *" + title + "*\n\n AI가 생성한 이미지 입니다. 실제 음식과 다를 수 있습니다.\n\n" + menuInfo.menu();
-            String slackThreadTs = slackClient.postImageMessage(
-                config.getChannelId(), slackMessage, foodImageUrl, null
-            );
-            if (slackThreadTs == null) {
-                log.warn("Slack 부모 스레드 ts가 없습니다. 메시지가 별도로 전송됩니다.");
+            // 10~11. Slack / Google Chat 전송 (채널 독립 처리: 한쪽 실패가 다른 쪽을 막지 않음)
+            boolean slackSent = sendToSlack(generatedImage, calorieCardFile, title, foodMessage);
+            boolean googleChatSent = sendToGoogleChat(generatedImage, calorieCardFile, title, foodMessage);
+
+            // 12. 해시 저장 및 업로드 (한 채널이라도 전송에 성공한 경우)
+            if (slackSent || googleChatSent) {
+                log.info("🔄 해시 업데이트 중... (Slack: {}, Google Chat: {})", slackSent, googleChatSent);
+                imageService.saveHash(currentHash);
+                gitHubClient.uploadTextFile(currentHash, HASH_FILE);
+                log.info("✅ 작업이 완료되었습니다.");
+            } else {
+                log.warn("⚠️ 모든 채널 전송에 실패하여 해시를 저장하지 않습니다. 다음 실행 시 재시도합니다.");
             }
-            slackClient.postImageMessage(config.getChannelId(), "📊 *상세 칼로리 분석표*", cardImageUrl, slackThreadTs);
-            log.info("✅ Slack 스레드 전송 완료.");
-
-            // 11. Google Chat 전송
-            log.info("Google Chat에 전송 중...");
-            String chatThreadKey = "lunch-" + System.currentTimeMillis();
-            googleChatClient.sendCard(foodImageUrl, title, slackMessage, chatThreadKey);
-            log.info("✅ Google Chat 식판 이미지 전송 완료.");
-
-            waitForGoogleChatOrder();
-
-            googleChatClient.sendCard(cardImageUrl, "상세 칼로리 분석", "📊 *상세 칼로리 분석표*", chatThreadKey);
-            log.info("✅ Google Chat 칼로리 카드 전송 완료.");
-
-            // 12. 해시 저장 및 업로드 (모든 작업 성공 후)
-            log.info("🔄 모든 작업 완료. 해시 업데이트 중...");
-            imageService.saveHash(currentHash);
-            gitHubClient.uploadTextFile(currentHash, HASH_FILE);
-            log.info("✅ 작업이 성공적으로 완료되었습니다.");
 
         } catch (IOException e) {
             log.error("❌ 오류 발생: {}", e.getMessage());
         } finally {
             cleanupTempFiles();
+        }
+    }
+
+    /**
+     * Slack에 메뉴 안내 텍스트를 부모 메시지로 올리고, 식판 이미지와 칼로리 카드를
+     * 그 스레드의 답글로 전송합니다.
+     *
+     * <p>이미지는 GitHub raw URL을 image block으로 보내는 대신 파일을 직접
+     * 업로드하여, CDN 전파 지연으로 인한 다운로드 실패("downloading image failed")를
+     * 원천적으로 방지합니다.
+     *
+     * <p>스레드 부모로는 항상 안정적인 ts를 반환하는 {@code chat.postMessage} 텍스트
+     * 메시지를 사용합니다. 그 ts를 두 파일 업로드의 {@code thread_ts}로 넘겨 답글로
+     * 묶으므로, 파일 업로드 응답의 공유 ts에 의존하지 않습니다(files:read 불필요).
+     *
+     * @param foodImage 식판 이미지 파일
+     * @param cardImage 칼로리 카드 이미지 파일
+     * @param title     식판 이미지 파일 제목
+     * @param message   부모 메시지(메뉴 안내) 본문
+     * @return 전송에 성공하면 {@code true}, 실패하면 {@code false}
+     */
+    private boolean sendToSlack(File foodImage, File cardImage, String title, String message) {
+        try {
+            log.info("Slack에 전송 중...");
+            // 부모: 메뉴 안내 텍스트
+            String parentTs = slackClient.postMessage(config.getChannelId(), message);
+            if (parentTs == null) {
+                log.warn("Slack 부모 메시지 ts를 확보하지 못했습니다. 이미지가 답글로 묶이지 않을 수 있습니다.");
+            }
+            // 답글: 식판 이미지 → 칼로리 카드
+            slackClient.uploadFile(config.getChannelId(), foodImage, title, null, parentTs);
+            slackClient.uploadFile(config.getChannelId(), cardImage, CALORIE_CARD_TITLE, CALORIE_CARD_COMMENT, parentTs);
+            log.info("✅ Slack 스레드 전송 완료.");
+            return true;
+        } catch (IOException e) {
+            log.error("⚠️ Slack 전송 실패 (다른 채널은 계속 진행): {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Google Chat에 식판 이미지와 칼로리 카드를 카드 메시지로 전송합니다.
+     *
+     * <p>Google Chat 카드는 이미지 URL을 참조하므로, 전송 직전에 GitHub에 이미지를
+     * 업로드하고 raw URL을 사용합니다.
+     *
+     * @param foodImage 식판 이미지 파일
+     * @param cardImage 칼로리 카드 이미지 파일
+     * @param title     식판 카드 제목
+     * @param message   식판 카드 본문
+     * @return 전송에 성공하면 {@code true}, 실패하면 {@code false}
+     */
+    private boolean sendToGoogleChat(File foodImage, File cardImage, String title, String message) {
+        try {
+            log.info("GitHub에 이미지 업로드 중 (Google Chat용)...");
+            long timestamp = System.currentTimeMillis();
+            String foodImageName = FOOD_IMAGE_PREFIX + timestamp + IMAGE_EXTENSION;
+            String cardImageName = CARD_IMAGE_PREFIX + timestamp + IMAGE_EXTENSION;
+            gitHubClient.uploadImage(foodImage, foodImageName);
+            gitHubClient.uploadImage(cardImage, cardImageName);
+            String foodImageUrl = gitHubClient.getRawUrl(foodImageName);
+            String cardImageUrl = gitHubClient.getRawUrl(cardImageName);
+
+            log.info("Google Chat에 전송 중...");
+            String chatThreadKey = "lunch-" + timestamp;
+            googleChatClient.sendCard(foodImageUrl, title, message, chatThreadKey);
+            log.info("✅ Google Chat 식판 이미지 전송 완료.");
+
+            waitForGoogleChatOrder();
+
+            googleChatClient.sendCard(cardImageUrl, CALORIE_CARD_TITLE, CALORIE_CARD_COMMENT, chatThreadKey);
+            log.info("✅ Google Chat 칼로리 카드 전송 완료.");
+            return true;
+        } catch (IOException e) {
+            log.error("⚠️ Google Chat 전송 실패 (다른 채널은 계속 진행): {}", e.getMessage());
+            return false;
         }
     }
 
