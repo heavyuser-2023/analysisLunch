@@ -9,6 +9,7 @@ import analysislunch.infrastructure.client.DiscordClient;
 import analysislunch.infrastructure.client.GeminiClient;
 import analysislunch.infrastructure.client.GitHubClient;
 import analysislunch.infrastructure.client.GoogleChatClient;
+import analysislunch.infrastructure.client.InstagramClient;
 import analysislunch.infrastructure.client.SlackClient;
 import analysislunch.infrastructure.client.TelegramClient;
 import analysislunch.infrastructure.crawler.BlogCrawler;
@@ -49,6 +50,9 @@ public class Main {
             DiscordClient discordClient = config.isDiscordEnabled()
                 ? new DiscordClient(config.getDiscordWebhook())
                 : null;
+            InstagramClient instagramClient = config.isInstagramEnabled()
+                ? new InstagramClient(config.getInstagramAccessToken(), config.getInstagramBusinessAccountId())
+                : null;
 
             // 3. 서비스 초기화
             LunchFlowService flowService = new LunchFlowService(
@@ -60,7 +64,8 @@ public class Main {
                 gitHubClient,
                 googleChatClient,
                 telegramClient,
-                discordClient
+                discordClient,
+                instagramClient
             );
 
             // 4. 애플리케이션 실행

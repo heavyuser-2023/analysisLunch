@@ -2,6 +2,7 @@ package analysislunch.domain.service;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -11,6 +12,7 @@ import analysislunch.infrastructure.client.GeminiClient;
 import analysislunch.infrastructure.client.GitHubClient;
 import analysislunch.infrastructure.client.DiscordClient;
 import analysislunch.infrastructure.client.GoogleChatClient;
+import analysislunch.infrastructure.client.InstagramClient;
 import analysislunch.infrastructure.client.SlackClient;
 import analysislunch.infrastructure.client.TelegramClient;
 import analysislunch.infrastructure.crawler.BlogCrawler;
@@ -33,6 +35,8 @@ public class LunchFlowService {
     private static final String HASH_FILE = "menu_hash.txt";
     private static final String FOOD_IMAGE_PREFIX = "lunch_food_";
     private static final String CARD_IMAGE_PREFIX = "lunch_card_";
+    private static final String IG_FOOD_IMAGE_PREFIX = "ig_food_";
+    private static final String IG_CARD_IMAGE_PREFIX = "ig_card_";
     private static final String IMAGE_EXTENSION = ".png";
     private static final String MENU_TITLE_SUFFIX = " - 점심 메뉴";
     private static final String CALORIE_CARD_TITLE = "상세 칼로리 분석";
@@ -48,6 +52,7 @@ public class LunchFlowService {
     private final GoogleChatClient googleChatClient;
     private final TelegramClient telegramClient;
     private final DiscordClient discordClient;
+    private final InstagramClient instagramClient;
 
     /**
      * LunchFlowService 생성자.
@@ -61,6 +66,7 @@ public class LunchFlowService {
      * @param googleChatClient Google Chat API 클라이언트
      * @param telegramClient   Telegram API 클라이언트 (선택, 미설정 시 {@code null})
      * @param discordClient    Discord Webhook 클라이언트 (선택, 미설정 시 {@code null})
+     * @param instagramClient  Instagram Graph API 클라이언트 (선택, 미설정 시 {@code null})
      */
     public LunchFlowService(
             AppConfig config,
@@ -71,7 +77,8 @@ public class LunchFlowService {
             GitHubClient gitHubClient,
             GoogleChatClient googleChatClient,
             TelegramClient telegramClient,
-            DiscordClient discordClient) {
+            DiscordClient discordClient,
+            InstagramClient instagramClient) {
         this.config = config;
         this.imageService = imageService;
         this.blogCrawler = blogCrawler;
@@ -81,6 +88,7 @@ public class LunchFlowService {
         this.googleChatClient = googleChatClient;
         this.telegramClient = telegramClient;
         this.discordClient = discordClient;
+        this.instagramClient = instagramClient;
     }
 
     /**
@@ -147,11 +155,13 @@ public class LunchFlowService {
             boolean googleChatSent = sendToGoogleChat(generatedImage, calorieCardFile, title, foodMessage);
             boolean telegramSent = sendToTelegram(generatedImage, calorieCardFile, foodMessage);
             boolean discordSent = sendToDiscord(generatedImage, calorieCardFile, foodMessage);
+            // 인스타그램은 마크다운 미지원 → 캡션에서 별표 제거
+            boolean instagramSent = sendToInstagram(generatedImage, calorieCardFile, foodMessage.replace("*", ""));
 
             // 14. 해시 저장 및 업로드 (한 채널이라도 전송에 성공한 경우)
-            if (slackSent || googleChatSent || telegramSent || discordSent) {
-                log.info("🔄 해시 업데이트 중... (Slack: {}, Google Chat: {}, Telegram: {}, Discord: {})",
-                    slackSent, googleChatSent, telegramSent, discordSent);
+            if (slackSent || googleChatSent || telegramSent || discordSent || instagramSent) {
+                log.info("🔄 해시 업데이트 중... (Slack: {}, Google Chat: {}, Telegram: {}, Discord: {}, Instagram: {})",
+                    slackSent, googleChatSent, telegramSent, discordSent, instagramSent);
                 imageService.saveHash(currentHash);
                 gitHubClient.uploadTextFile(currentHash, HASH_FILE);
                 log.info("✅ 작업이 완료되었습니다.");
@@ -295,6 +305,45 @@ public class LunchFlowService {
             return true;
         } catch (IOException e) {
             log.error("⚠️ Discord 전송 실패 (다른 채널은 계속 진행): {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Instagram에 식판 이미지와 칼로리 카드를 캐러셀 게시물로 올립니다.
+     *
+     * <p>설정이 없으면(미사용) 조용히 건너뜁니다. 인스타그램은 로컬 파일 업로드를
+     * 지원하지 않고 공개 이미지 URL만 받으므로, GitHub에 이미지를 업로드해 raw URL을
+     * 만든 뒤 캐러셀(2장)로 게시합니다. 다른 채널과 독립적으로, 자신만의 이미지를
+     * 업로드해 외부 상태에 의존하지 않습니다.
+     *
+     * @param foodImage 식판 이미지 파일
+     * @param cardImage 칼로리 카드 이미지 파일
+     * @param caption   게시물 캡션 (평문)
+     * @return 전송에 성공하면 {@code true}, 미설정이거나 실패하면 {@code false}
+     */
+    private boolean sendToInstagram(File foodImage, File cardImage, String caption) {
+        if (!config.isInstagramEnabled()) {
+            log.info("Instagram 설정이 없어 건너뜁니다.");
+            return false;
+        }
+        try {
+            log.info("GitHub에 이미지 업로드 중 (Instagram용)...");
+            long timestamp = System.currentTimeMillis();
+            String foodImageName = IG_FOOD_IMAGE_PREFIX + timestamp + IMAGE_EXTENSION;
+            String cardImageName = IG_CARD_IMAGE_PREFIX + timestamp + IMAGE_EXTENSION;
+            gitHubClient.uploadImage(foodImage, foodImageName);
+            gitHubClient.uploadImage(cardImage, cardImageName);
+            List<String> imageUrls = List.of(
+                gitHubClient.getRawUrl(foodImageName),
+                gitHubClient.getRawUrl(cardImageName));
+
+            log.info("Instagram에 전송 중...");
+            instagramClient.postCarousel(imageUrls, caption);
+            log.info("✅ Instagram 전송 완료.");
+            return true;
+        } catch (IOException e) {
+            log.error("⚠️ Instagram 전송 실패 (다른 채널은 계속 진행): {}", e.getMessage());
             return false;
         }
     }

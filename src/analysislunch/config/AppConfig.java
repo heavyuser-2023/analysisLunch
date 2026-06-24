@@ -16,6 +16,8 @@ public class AppConfig {
     private static final String ENV_TELEGRAM_BOT_TOKEN = "TELEGRAM_BOT_TOKEN";
     private static final String ENV_TELEGRAM_CHAT_ID = "TELEGRAM_CHAT_ID";
     private static final String ENV_DISCORD_WEBHOOK_URL = "DISCORD_WEBHOOK_URL";
+    private static final String ENV_INSTAGRAM_ACCESS_TOKEN = "INSTAGRAM_ACCESS_TOKEN";
+    private static final String ENV_INSTAGRAM_BUSINESS_ACCOUNT_ID = "INSTAGRAM_BUSINESS_ACCOUNT_ID";
 
     private final String botToken;
     private final String channelId;
@@ -26,6 +28,8 @@ public class AppConfig {
     private final String telegramBotToken;
     private final String telegramChatId;
     private final String discordWebhook;
+    private final String instagramAccessToken;
+    private final String instagramBusinessAccountId;
 
     /**
      * AppConfig 생성자.
@@ -39,6 +43,8 @@ public class AppConfig {
      * @param telegramBotToken Telegram 봇 토큰 (선택, 미설정 시 {@code null})
      * @param telegramChatId   Telegram 채팅 ID (선택, 미설정 시 {@code null})
      * @param discordWebhook   Discord Webhook URL (선택, 미설정 시 {@code null})
+     * @param instagramAccessToken       Instagram Graph API 액세스 토큰 (선택, 미설정 시 {@code null})
+     * @param instagramBusinessAccountId Instagram 비즈니스 계정 ID (선택, 미설정 시 {@code null})
      */
     public AppConfig(
             String botToken,
@@ -49,7 +55,9 @@ public class AppConfig {
             String googleChatWebhook,
             String telegramBotToken,
             String telegramChatId,
-            String discordWebhook) {
+            String discordWebhook,
+            String instagramAccessToken,
+            String instagramBusinessAccountId) {
         this.botToken = botToken;
         this.channelId = channelId;
         this.geminiApiKey = geminiApiKey;
@@ -59,6 +67,8 @@ public class AppConfig {
         this.telegramBotToken = telegramBotToken;
         this.telegramChatId = telegramChatId;
         this.discordWebhook = discordWebhook;
+        this.instagramAccessToken = instagramAccessToken;
+        this.instagramBusinessAccountId = instagramBusinessAccountId;
     }
 
     /**
@@ -79,10 +89,13 @@ public class AppConfig {
         String telegramBotToken = optionalEnv(ENV_TELEGRAM_BOT_TOKEN);
         String telegramChatId = optionalEnv(ENV_TELEGRAM_CHAT_ID);
         String discordWebhook = optionalEnv(ENV_DISCORD_WEBHOOK_URL);
+        String instagramAccessToken = optionalEnv(ENV_INSTAGRAM_ACCESS_TOKEN);
+        String instagramBusinessAccountId = optionalEnv(ENV_INSTAGRAM_BUSINESS_ACCOUNT_ID);
 
         return new AppConfig(
             botToken, channelId, geminiApiKey, githubToken, githubRepo, googleChatWebhook,
-            telegramBotToken, telegramChatId, discordWebhook);
+            telegramBotToken, telegramChatId, discordWebhook,
+            instagramAccessToken, instagramBusinessAccountId);
     }
 
     /**
@@ -208,5 +221,32 @@ public class AppConfig {
      */
     public boolean isDiscordEnabled() {
         return discordWebhook != null;
+    }
+
+    /**
+     * Instagram 액세스 토큰을 반환합니다.
+     *
+     * @return Instagram Graph API 액세스 토큰, 미설정 시 {@code null}
+     */
+    public String getInstagramAccessToken() {
+        return instagramAccessToken;
+    }
+
+    /**
+     * Instagram 비즈니스 계정 ID를 반환합니다.
+     *
+     * @return Instagram 비즈니스 계정 ID, 미설정 시 {@code null}
+     */
+    public String getInstagramBusinessAccountId() {
+        return instagramBusinessAccountId;
+    }
+
+    /**
+     * Instagram 게시에 필요한 설정이 모두 갖춰졌는지 확인합니다.
+     *
+     * @return 액세스 토큰과 비즈니스 계정 ID가 모두 설정되어 있으면 {@code true}
+     */
+    public boolean isInstagramEnabled() {
+        return instagramAccessToken != null && instagramBusinessAccountId != null;
     }
 }
