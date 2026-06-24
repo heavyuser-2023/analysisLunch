@@ -13,6 +13,9 @@ public class AppConfig {
     private static final String ENV_GITHUB_TOKEN = "GITHUB_TOKEN";
     private static final String ENV_GITHUB_REPO = "GITHUB_REPO";
     private static final String ENV_GOOGLE_CHAT_WEBHOOK_URL = "GOOGLE_CHAT_WEBHOOK_URL";
+    private static final String ENV_TELEGRAM_BOT_TOKEN = "TELEGRAM_BOT_TOKEN";
+    private static final String ENV_TELEGRAM_CHAT_ID = "TELEGRAM_CHAT_ID";
+    private static final String ENV_DISCORD_WEBHOOK_URL = "DISCORD_WEBHOOK_URL";
 
     private final String botToken;
     private final String channelId;
@@ -20,6 +23,9 @@ public class AppConfig {
     private final String githubToken;
     private final String githubRepo;
     private final String googleChatWebhook;
+    private final String telegramBotToken;
+    private final String telegramChatId;
+    private final String discordWebhook;
 
     /**
      * AppConfig 생성자.
@@ -30,6 +36,9 @@ public class AppConfig {
      * @param githubToken      GitHub 개인 액세스 토큰
      * @param githubRepo       GitHub 저장소 (예: "owner/repo")
      * @param googleChatWebhook Google Chat Webhook URL
+     * @param telegramBotToken Telegram 봇 토큰 (선택, 미설정 시 {@code null})
+     * @param telegramChatId   Telegram 채팅 ID (선택, 미설정 시 {@code null})
+     * @param discordWebhook   Discord Webhook URL (선택, 미설정 시 {@code null})
      */
     public AppConfig(
             String botToken,
@@ -37,13 +46,19 @@ public class AppConfig {
             String geminiApiKey,
             String githubToken,
             String githubRepo,
-            String googleChatWebhook) {
+            String googleChatWebhook,
+            String telegramBotToken,
+            String telegramChatId,
+            String discordWebhook) {
         this.botToken = botToken;
         this.channelId = channelId;
         this.geminiApiKey = geminiApiKey;
         this.githubToken = githubToken;
         this.githubRepo = githubRepo;
         this.googleChatWebhook = googleChatWebhook;
+        this.telegramBotToken = telegramBotToken;
+        this.telegramChatId = telegramChatId;
+        this.discordWebhook = discordWebhook;
     }
 
     /**
@@ -60,7 +75,25 @@ public class AppConfig {
         String githubRepo = requireEnv(ENV_GITHUB_REPO);
         String googleChatWebhook = requireEnv(ENV_GOOGLE_CHAT_WEBHOOK_URL);
 
-        return new AppConfig(botToken, channelId, geminiApiKey, githubToken, githubRepo, googleChatWebhook);
+        // 선택 채널: 미설정 시 해당 채널 전송을 건너뜁니다.
+        String telegramBotToken = optionalEnv(ENV_TELEGRAM_BOT_TOKEN);
+        String telegramChatId = optionalEnv(ENV_TELEGRAM_CHAT_ID);
+        String discordWebhook = optionalEnv(ENV_DISCORD_WEBHOOK_URL);
+
+        return new AppConfig(
+            botToken, channelId, geminiApiKey, githubToken, githubRepo, googleChatWebhook,
+            telegramBotToken, telegramChatId, discordWebhook);
+    }
+
+    /**
+     * 환경 변수 값을 읽고, 없으면 {@code null}을 반환합니다 (선택 설정용).
+     *
+     * @param key 환경 변수 키
+     * @return 환경 변수 값, 없거나 비어있으면 {@code null}
+     */
+    private static String optionalEnv(String key) {
+        String value = System.getenv(key);
+        return (value == null || value.isEmpty()) ? null : value;
     }
 
     /**
@@ -130,5 +163,50 @@ public class AppConfig {
      */
     public String getGoogleChatWebhook() {
         return googleChatWebhook;
+    }
+
+    /**
+     * Telegram 봇 토큰을 반환합니다.
+     *
+     * @return Telegram 봇 토큰, 미설정 시 {@code null}
+     */
+    public String getTelegramBotToken() {
+        return telegramBotToken;
+    }
+
+    /**
+     * Telegram 채팅 ID를 반환합니다.
+     *
+     * @return Telegram 채팅 ID, 미설정 시 {@code null}
+     */
+    public String getTelegramChatId() {
+        return telegramChatId;
+    }
+
+    /**
+     * Discord Webhook URL을 반환합니다.
+     *
+     * @return Discord Webhook URL, 미설정 시 {@code null}
+     */
+    public String getDiscordWebhook() {
+        return discordWebhook;
+    }
+
+    /**
+     * Telegram 전송에 필요한 설정이 모두 갖춰졌는지 확인합니다.
+     *
+     * @return 봇 토큰과 채팅 ID가 모두 설정되어 있으면 {@code true}
+     */
+    public boolean isTelegramEnabled() {
+        return telegramBotToken != null && telegramChatId != null;
+    }
+
+    /**
+     * Discord 전송에 필요한 설정이 갖춰졌는지 확인합니다.
+     *
+     * @return Webhook URL이 설정되어 있으면 {@code true}
+     */
+    public boolean isDiscordEnabled() {
+        return discordWebhook != null;
     }
 }

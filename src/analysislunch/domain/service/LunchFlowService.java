@@ -9,8 +9,10 @@ import analysislunch.config.AppConfig;
 import analysislunch.domain.model.MenuInfo;
 import analysislunch.infrastructure.client.GeminiClient;
 import analysislunch.infrastructure.client.GitHubClient;
+import analysislunch.infrastructure.client.DiscordClient;
 import analysislunch.infrastructure.client.GoogleChatClient;
 import analysislunch.infrastructure.client.SlackClient;
+import analysislunch.infrastructure.client.TelegramClient;
 import analysislunch.infrastructure.crawler.BlogCrawler;
 
 /**
@@ -44,6 +46,8 @@ public class LunchFlowService {
     private final SlackClient slackClient;
     private final GitHubClient gitHubClient;
     private final GoogleChatClient googleChatClient;
+    private final TelegramClient telegramClient;
+    private final DiscordClient discordClient;
 
     /**
      * LunchFlowService 생성자.
@@ -55,6 +59,8 @@ public class LunchFlowService {
      * @param slackClient      Slack API 클라이언트
      * @param gitHubClient     GitHub API 클라이언트
      * @param googleChatClient Google Chat API 클라이언트
+     * @param telegramClient   Telegram API 클라이언트 (선택, 미설정 시 {@code null})
+     * @param discordClient    Discord Webhook 클라이언트 (선택, 미설정 시 {@code null})
      */
     public LunchFlowService(
             AppConfig config,
@@ -63,7 +69,9 @@ public class LunchFlowService {
             GeminiClient geminiClient,
             SlackClient slackClient,
             GitHubClient gitHubClient,
-            GoogleChatClient googleChatClient) {
+            GoogleChatClient googleChatClient,
+            TelegramClient telegramClient,
+            DiscordClient discordClient) {
         this.config = config;
         this.imageService = imageService;
         this.blogCrawler = blogCrawler;
@@ -71,6 +79,8 @@ public class LunchFlowService {
         this.slackClient = slackClient;
         this.gitHubClient = gitHubClient;
         this.googleChatClient = googleChatClient;
+        this.telegramClient = telegramClient;
+        this.discordClient = discordClient;
     }
 
     /**
@@ -132,13 +142,16 @@ public class LunchFlowService {
             String foodMessage = "📢 *" + title + "*\n\n AI가 생성한 이미지 입니다. 실제 음식과 다를 수 있습니다.\n\n"
                 + menuInfo.menu();
 
-            // 10~11. Slack / Google Chat 전송 (채널 독립 처리: 한쪽 실패가 다른 쪽을 막지 않음)
+            // 10~13. 각 채널 전송 (채널 독립 처리: 한쪽 실패가 다른 쪽을 막지 않음)
             boolean slackSent = sendToSlack(generatedImage, calorieCardFile, title, foodMessage);
             boolean googleChatSent = sendToGoogleChat(generatedImage, calorieCardFile, title, foodMessage);
+            boolean telegramSent = sendToTelegram(generatedImage, calorieCardFile, foodMessage);
+            boolean discordSent = sendToDiscord(generatedImage, calorieCardFile, foodMessage);
 
-            // 12. 해시 저장 및 업로드 (한 채널이라도 전송에 성공한 경우)
-            if (slackSent || googleChatSent) {
-                log.info("🔄 해시 업데이트 중... (Slack: {}, Google Chat: {})", slackSent, googleChatSent);
+            // 14. 해시 저장 및 업로드 (한 채널이라도 전송에 성공한 경우)
+            if (slackSent || googleChatSent || telegramSent || discordSent) {
+                log.info("🔄 해시 업데이트 중... (Slack: {}, Google Chat: {}, Telegram: {}, Discord: {})",
+                    slackSent, googleChatSent, telegramSent, discordSent);
                 imageService.saveHash(currentHash);
                 gitHubClient.uploadTextFile(currentHash, HASH_FILE);
                 log.info("✅ 작업이 완료되었습니다.");
@@ -225,6 +238,63 @@ public class LunchFlowService {
             return true;
         } catch (IOException e) {
             log.error("⚠️ Google Chat 전송 실패 (다른 채널은 계속 진행): {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Telegram 채널에 메뉴 안내 텍스트와 식판 이미지, 칼로리 카드를 전송합니다.
+     *
+     * <p>설정이 없으면(미사용) 조용히 건너뜁니다. 이미지는 로컬 파일을 직접
+     * 업로드하므로 외부 이미지 URL에 의존하지 않습니다.
+     *
+     * @param foodImage 식판 이미지 파일
+     * @param cardImage 칼로리 카드 이미지 파일
+     * @param message   메뉴 안내 본문
+     * @return 전송에 성공하면 {@code true}, 미설정이거나 실패하면 {@code false}
+     */
+    private boolean sendToTelegram(File foodImage, File cardImage, String message) {
+        if (!config.isTelegramEnabled()) {
+            log.info("Telegram 설정이 없어 건너뜁니다.");
+            return false;
+        }
+        try {
+            log.info("Telegram에 전송 중...");
+            telegramClient.sendMessage(message);
+            telegramClient.sendPhoto(foodImage, null);
+            telegramClient.sendPhoto(cardImage, CALORIE_CARD_COMMENT);
+            log.info("✅ Telegram 전송 완료.");
+            return true;
+        } catch (IOException e) {
+            log.error("⚠️ Telegram 전송 실패 (다른 채널은 계속 진행): {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Discord 채널에 메뉴 안내 본문과 식판 이미지, 칼로리 카드를 전송합니다.
+     *
+     * <p>설정이 없으면(미사용) 조용히 건너뜁니다. 이미지는 로컬 파일을 직접
+     * 업로드하므로 외부 이미지 URL에 의존하지 않습니다.
+     *
+     * @param foodImage 식판 이미지 파일
+     * @param cardImage 칼로리 카드 이미지 파일
+     * @param message   메뉴 안내 본문
+     * @return 전송에 성공하면 {@code true}, 미설정이거나 실패하면 {@code false}
+     */
+    private boolean sendToDiscord(File foodImage, File cardImage, String message) {
+        if (!config.isDiscordEnabled()) {
+            log.info("Discord 설정이 없어 건너뜁니다.");
+            return false;
+        }
+        try {
+            log.info("Discord에 전송 중...");
+            discordClient.sendPhoto(foodImage, message);
+            discordClient.sendPhoto(cardImage, CALORIE_CARD_COMMENT);
+            log.info("✅ Discord 전송 완료.");
+            return true;
+        } catch (IOException e) {
+            log.error("⚠️ Discord 전송 실패 (다른 채널은 계속 진행): {}", e.getMessage());
             return false;
         }
     }

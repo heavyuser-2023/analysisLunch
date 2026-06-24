@@ -120,6 +120,81 @@ public class HttpUtils {
     }
 
     /**
+     * multipart/form-data 형식으로 텍스트 필드와 단일 파일을 POST합니다.
+     *
+     * <p>Telegram {@code sendPhoto}, Discord Webhook 등 파일 첨부가 필요한
+     * API에 사용합니다. 외부에 공개된 이미지 URL에 의존하지 않고 로컬 파일을
+     * 직접 업로드하므로 CDN 전파 지연의 영향을 받지 않습니다.
+     *
+     * @param urlStr        요청 URL
+     * @param fields        폼 텍스트 필드 (key/value)
+     * @param fileFieldName 파일 파트의 필드명 (예: Telegram "photo", Discord "file")
+     * @param file          업로드할 파일
+     * @param fileContentType 파일 파트의 Content-Type (예: "image/png")
+     * @return 응답 본문 문자열
+     * @throws IOException 네트워크 오류 또는 응답 코드가 200대가 아닐 때
+     */
+    public static String postMultipart(
+            String urlStr,
+            java.util.Map<String, String> fields,
+            String fileFieldName,
+            File file,
+            String fileContentType) throws IOException {
+        String boundary = "----analysisLunchBoundary" + Long.toHexString(file.length());
+        String lineEnd = "\r\n";
+        String twoHyphens = "--";
+
+        HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
+        conn.setRequestMethod("POST");
+        conn.setDoOutput(true);
+        conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+
+        try (OutputStream os = conn.getOutputStream();
+             BufferedInputStream bis = new BufferedInputStream(new FileInputStream(file))) {
+            // 텍스트 필드
+            if (fields != null) {
+                for (java.util.Map.Entry<String, String> entry : fields.entrySet()) {
+                    StringBuilder part = new StringBuilder();
+                    part.append(twoHyphens).append(boundary).append(lineEnd);
+                    part.append("Content-Disposition: form-data; name=\"")
+                        .append(entry.getKey()).append("\"").append(lineEnd);
+                    part.append("Content-Type: text/plain; charset=UTF-8").append(lineEnd);
+                    part.append(lineEnd).append(entry.getValue()).append(lineEnd);
+                    os.write(part.toString().getBytes(StandardCharsets.UTF_8));
+                }
+            }
+
+            // 파일 파트 헤더
+            StringBuilder fileHeader = new StringBuilder();
+            fileHeader.append(twoHyphens).append(boundary).append(lineEnd);
+            fileHeader.append("Content-Disposition: form-data; name=\"")
+                .append(fileFieldName).append("\"; filename=\"")
+                .append(file.getName()).append("\"").append(lineEnd);
+            fileHeader.append("Content-Type: ").append(fileContentType).append(lineEnd);
+            fileHeader.append(lineEnd);
+            os.write(fileHeader.toString().getBytes(StandardCharsets.UTF_8));
+
+            // 파일 바이너리
+            byte[] buffer = new byte[BUFFER_SIZE];
+            int bytesRead;
+            while ((bytesRead = bis.read(buffer)) != -1) {
+                os.write(buffer, 0, bytesRead);
+            }
+
+            // 종료 경계
+            os.write((lineEnd + twoHyphens + boundary + twoHyphens + lineEnd)
+                .getBytes(StandardCharsets.UTF_8));
+        }
+
+        int responseCode = conn.getResponseCode();
+        String response = readResponse(conn);
+        if (responseCode >= HTTP_ERROR_THRESHOLD) {
+            throw new IOException("multipart 업로드 실패 (응답 코드: " + responseCode + "): " + response);
+        }
+        return response;
+    }
+
+    /**
      * HTTP 응답 본문을 문자열로 읽습니다.
      *
      * @param conn 연결된 {@link HttpURLConnection}

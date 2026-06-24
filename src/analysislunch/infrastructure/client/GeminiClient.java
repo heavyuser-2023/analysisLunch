@@ -33,6 +33,15 @@ public class GeminiClient {
     private static final String MIME_TYPE_PNG = "image/png";
     private static final String FALLBACK_DATE = "날짜 없음";
 
+    /** Gemini 일시 오류 시 최대 시도 횟수 (최초 시도 포함). */
+    private static final int MAX_ATTEMPTS = 3;
+    /** 재시도 초기 대기 시간(ms). 시도마다 2배씩 증가. */
+    private static final long INITIAL_BACKOFF_MS = 2000L;
+    /** 재시도 대기 시간 상한(ms). */
+    private static final long MAX_BACKOFF_MS = 16000L;
+    /** 로그에 출력할 응답 본문 최대 길이. */
+    private static final int LOG_RESPONSE_LIMIT = 500;
+
     private static final Gson GSON = new Gson();
 
     private final String apiKey;
@@ -62,7 +71,7 @@ public class GeminiClient {
 
         String jsonBody = GSON.toJson(buildTextWithImageRequest(prompt, base64Image, MIME_TYPE_JPEG));
 
-        String response = HttpUtils.postJson(API_URL_TEXT + "?key=" + apiKey, null, jsonBody);
+        String response = callGeminiWithRetry(API_URL_TEXT + "?key=" + apiKey, jsonBody, "메뉴 OCR");
         log.info("메뉴 텍스트 추출 응답 수신 완료");
         log.debug("메뉴 OCR 원본 응답: {}", response);
 
@@ -136,7 +145,7 @@ public class GeminiClient {
 
         String jsonBody = GSON.toJson(requestBody);
 
-        String response = HttpUtils.postJson(API_URL_IMAGE + "?key=" + apiKey, null, jsonBody);
+        String response = callGeminiWithRetry(API_URL_IMAGE + "?key=" + apiKey, jsonBody, "이미지 생성");
         log.info("이미지 생성 응답 수신 완료 (길이: {})", response.length());
 
         String base64Image = JsonUtils.extractImageData(response);
@@ -192,10 +201,90 @@ public class GeminiClient {
 
         String jsonBody = GSON.toJson(buildTextWithImageRequest(prompt, base64Image, MIME_TYPE_PNG));
 
-        String response = HttpUtils.postJson(API_URL_TEXT + "?key=" + apiKey, null, jsonBody);
+        String response = callGeminiWithRetry(API_URL_TEXT + "?key=" + apiKey, jsonBody, "칼로리 분석");
         log.info("칼로리 분석 응답 수신 완료");
 
         return JsonUtils.extractGeminiText(response);
+    }
+
+    /**
+     * Gemini API를 호출하되, 일시적 오류(429/500/503, UNAVAILABLE 등)나
+     * 네트워크 예외 발생 시 지수 백오프로 재시도합니다.
+     *
+     * <p>최종 시도까지 일시 오류가 지속되면 마지막 응답을 그대로 반환하여,
+     * 호출부의 기존 응답 검증/오류 처리 로직이 동작하도록 합니다.
+     *
+     * @param url      요청 URL (API 키 포함)
+     * @param jsonBody 요청 본문 JSON
+     * @param taskName 로그 식별용 작업 이름
+     * @return Gemini 응답 본문 문자열
+     * @throws IOException 마지막 시도까지 네트워크 오류가 지속될 때
+     */
+    private String callGeminiWithRetry(String url, String jsonBody, String taskName) throws IOException {
+        long backoffMs = INITIAL_BACKOFF_MS;
+        for (int attempt = 1; ; attempt++) {
+            try {
+                String response = HttpUtils.postJson(url, null, jsonBody);
+                if (!isTransientError(response) || attempt >= MAX_ATTEMPTS) {
+                    return response;
+                }
+                log.warn("{} Gemini 일시 오류 (시도 {}/{}). {}ms 후 재시도. 응답: {}",
+                    taskName, attempt, MAX_ATTEMPTS, backoffMs,
+                    response.substring(0, Math.min(LOG_RESPONSE_LIMIT, response.length())));
+            } catch (IOException e) {
+                if (attempt >= MAX_ATTEMPTS) {
+                    throw e;
+                }
+                log.warn("{} 네트워크 오류 (시도 {}/{}). {}ms 후 재시도: {}",
+                    taskName, attempt, MAX_ATTEMPTS, backoffMs, e.getMessage());
+            }
+            sleep(backoffMs);
+            backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
+        }
+    }
+
+    /**
+     * Gemini 응답이 재시도 가능한 일시적 오류인지 판별합니다.
+     *
+     * <p>응답이 비어 있거나, {@code error.code}가 429/500/503이거나
+     * {@code error.status}가 UNAVAILABLE/RESOURCE_EXHAUSTED/INTERNAL이면 일시 오류로 봅니다.
+     *
+     * @param response Gemini 응답 본문 문자열
+     * @return 일시적 오류이면 {@code true}
+     */
+    private boolean isTransientError(String response) {
+        if (response == null || response.isBlank()) {
+            return true;
+        }
+        try {
+            JsonObject obj = GSON.fromJson(response, JsonObject.class);
+            if (obj == null || !obj.has("error") || !obj.get("error").isJsonObject()) {
+                return false;
+            }
+            JsonObject error = obj.getAsJsonObject("error");
+            int code = error.has("code") ? error.get("code").getAsInt() : 0;
+            String status = error.has("status") ? error.get("status").getAsString() : "";
+            return code == 429 || code == 500 || code == 503
+                || "UNAVAILABLE".equals(status)
+                || "RESOURCE_EXHAUSTED".equals(status)
+                || "INTERNAL".equals(status);
+        } catch (RuntimeException e) {
+            // 파싱 불가한 응답은 인식된 일시 오류가 아니므로 재시도하지 않음
+            return false;
+        }
+    }
+
+    /**
+     * 인터럽트 상태를 보존하며 지정한 시간만큼 대기합니다.
+     *
+     * @param ms 대기 시간(ms)
+     */
+    private void sleep(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**

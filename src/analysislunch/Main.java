@@ -5,10 +5,12 @@ import lombok.extern.slf4j.Slf4j;
 import analysislunch.config.AppConfig;
 import analysislunch.domain.service.ImageService;
 import analysislunch.domain.service.LunchFlowService;
+import analysislunch.infrastructure.client.DiscordClient;
 import analysislunch.infrastructure.client.GeminiClient;
 import analysislunch.infrastructure.client.GitHubClient;
 import analysislunch.infrastructure.client.GoogleChatClient;
 import analysislunch.infrastructure.client.SlackClient;
+import analysislunch.infrastructure.client.TelegramClient;
 import analysislunch.infrastructure.crawler.BlogCrawler;
 
 
@@ -40,6 +42,14 @@ public class Main {
             GitHubClient gitHubClient = new GitHubClient(config.getGithubToken(), config.getGithubRepo());
             GoogleChatClient googleChatClient = new GoogleChatClient(config.getGoogleChatWebhook());
 
+            // 선택 채널: 설정이 있을 때만 클라이언트를 생성합니다.
+            TelegramClient telegramClient = config.isTelegramEnabled()
+                ? new TelegramClient(config.getTelegramBotToken(), config.getTelegramChatId())
+                : null;
+            DiscordClient discordClient = config.isDiscordEnabled()
+                ? new DiscordClient(config.getDiscordWebhook())
+                : null;
+
             // 3. 서비스 초기화
             LunchFlowService flowService = new LunchFlowService(
                 config,
@@ -48,7 +58,9 @@ public class Main {
                 geminiClient,
                 slackClient,
                 gitHubClient,
-                googleChatClient
+                googleChatClient,
+                telegramClient,
+                discordClient
             );
 
             // 4. 애플리케이션 실행
