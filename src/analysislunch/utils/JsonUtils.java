@@ -70,7 +70,7 @@ public final class JsonUtils {
                 }
                 for (JsonElement partEl : parts) {
                     JsonObject part = asObject(partEl);
-                    if (part != null && part.has("text")) {
+                    if (part != null && !isThoughtPart(part) && part.has("text")) {
                         return jsonElementToString(part.get("text"));
                     }
                 }
@@ -110,7 +110,7 @@ public final class JsonUtils {
                 }
                 for (JsonElement partEl : parts) {
                     JsonObject part = asObject(partEl);
-                    if (part == null) {
+                    if (part == null || isThoughtPart(part)) {
                         continue;
                     }
                     JsonObject inlineData = getObject(part, "inlineData");
@@ -127,6 +127,12 @@ public final class JsonUtils {
             log.warn("Gemini 응답 이미지 데이터 추출 실패: {}", e.getMessage());
             return null;
         }
+    }
+
+    // 사고 과정을 거치는 모델은 중간 결과(초안 이미지 등)를 thought: true 파트로 보낼 수 있으므로 건너뜀
+    private static boolean isThoughtPart(JsonObject part) {
+        JsonElement thought = part.get("thought");
+        return thought != null && thought.isJsonPrimitive() && thought.getAsBoolean();
     }
 
     private static JsonObject getObject(JsonObject obj, String key) {

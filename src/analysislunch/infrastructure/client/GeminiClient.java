@@ -25,9 +25,9 @@ import analysislunch.utils.JsonUtils;
 public class GeminiClient {
 
     private static final String API_URL_TEXT =
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent";
     private static final String API_URL_IMAGE =
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent";
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-nano-banana-2.1:generateContent";
     private static final String TEMP_GENERATED_FILE = "generated_food.png";
     private static final String MIME_TYPE_JPEG = "image/jpeg";
     private static final String MIME_TYPE_PNG = "image/png";

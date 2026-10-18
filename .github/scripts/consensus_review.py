@@ -1,10 +1,12 @@
 import os
+import sys
 import json
 import asyncio
 import hashlib
-import google.generativeai as genai
 import requests
 from collections import Counter
+from google import genai
+from google.genai import types
 
 # 환경 변수 로드
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -13,14 +15,15 @@ GITHUB_REPO = os.getenv("GITHUB_REPO")
 PR_NUMBER = os.getenv("PR_NUMBER")
 
 # Gemini 설정
-genai.configure(api_key=GEMINI_API_KEY)
-# 2026년 기준 최신 Pro 모델 사용 (환경에 맞춰 모델명 수정 가능)
-MODEL_NAME = "gemini-3-pro-preview" 
+client = genai.Client(api_key=GEMINI_API_KEY)
+# 코딩·에이전트용 정식 Flash 모델 (환경에 맞춰 모델명 수정 가능)
+MODEL_NAME = "gemini-3.8-flash"
+# 병렬로 실행할 리뷰 인스턴스 수와, 이슈 채택에 필요한 최소 득표 수
+INSTANCE_COUNT = 3
+CONSENSUS_THRESHOLD = 2
 
-async def get_gemini_review(instance_id, diff, temperature):
-    """각기 다른 온도로 Gemini 모델 호출"""
-    model = genai.GenerativeModel(MODEL_NAME)
-
+async def get_gemini_review(instance_id, diff):
+    """Gemini 모델 호출. 실패 시 None을 반환해 '이슈 없음'([])과 구분"""
     prompt = f"""
     당신은 10년 차 시니어 소프트웨어 엔지니어이자 Java 코드 품질 전문가입니다.
     아래의 코드 변경사항(diff)을 **보안/로직/성능** 관점과 **Java 코드 컨벤션** 관점 모두에서 엄격하게 리뷰해 주세요.
@@ -111,15 +114,17 @@ async def get_gemini_review(instance_id, diff, temperature):
     """
 
     try:
-        # 온도 설정을 다르게 하여 각 인스턴스의 의견 다양성 확보
-        response = await model.generate_content_async(
-            prompt,
-            generation_config={"temperature": temperature, "response_mime_type": "application/json"}
+        # Gemini 3 계열은 temperature 기본값(1.0) 유지가 공식 권장이므로,
+        # 같은 설정으로 독립 호출해 생기는 응답 차이로 의견 다양성 확보
+        response = await client.aio.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json"),
         )
-        return json.loads(response.text).get("reviews", [])
+        return json.loads(response.text).get("reviews") or []
     except Exception as e:
         print(f"Instance {instance_id} failed: {e}")
-        return []
+        return None
 
 
 def get_pr_diff():
@@ -172,23 +177,29 @@ async def main():
         return
     diff_link_map = build_diff_link_map(diff)
 
-    # 1. 3개의 인스턴스를 병렬로 실행 (온도를 0.2, 0.7, 1.0으로 다르게 설정)
-    tasks = [
-        get_gemini_review(1, diff, 0.2),
-        get_gemini_review(2, diff, 0.7),
-        get_gemini_review(3, diff, 1.0)
-    ]
-    
+    # 1. 리뷰 인스턴스를 병렬로 실행
+    tasks = [get_gemini_review(i, diff) for i in range(1, INSTANCE_COUNT + 1)]
     all_results = await asyncio.gather(*tasks)
-    
+
+    # 실패한 인스턴스는 제외. 다수결이 불가능하면 '이슈 없음'으로 보이지 않도록 실패를 알리고 종료
+    succeeded = [r for r in all_results if r is not None]
+    responded = len(succeeded)
+    if responded < CONSENSUS_THRESHOLD:
+        post_github_comment(
+            "## ❌ Gemini 리뷰 실패\n"
+            f"{INSTANCE_COUNT}개 인스턴스 중 {responded}개만 응답하여 다수결 리뷰를 수행하지 못했습니다. "
+            "워크플로 로그를 확인해 주세요."
+        )
+        sys.exit(1)
+
     # 2. 다수결 로직 (Consensus)
-    flat_reviews = [item for sublist in all_results for item in sublist]
+    flat_reviews = [item for sublist in succeeded for item in sublist]
     line_counts = Counter([(r.get('file', 'unknown'), r.get('line'), r.get('side', 'RIGHT')) for r in flat_reviews])
-    
+
     consensus_issues = []
     for (file_path, line, side), count in line_counts.items():
-        # 3개 중 2개 이상의 인스턴스가 지적한 경우만 채택
-        if count >= 2:
+        # CONSENSUS_THRESHOLD개 이상의 인스턴스가 지적한 경우만 채택
+        if count >= CONSENSUS_THRESHOLD:
             relevant_reviews = [
                 r for r in flat_reviews
                 if r.get('file', 'unknown') == file_path
@@ -219,7 +230,7 @@ async def main():
 
     if consensus_issues:
         report = "## 🤖 Gemini 다수결 코드 리뷰 결과\n"
-        report += "> 3개의 Gemini 인스턴스가 교차 검증을 수행했습니다. (2표 이상 득표 항목만 표시)\n"
+        report += f"> {responded}개의 Gemini 인스턴스가 교차 검증을 수행했습니다. ({CONSENSUS_THRESHOLD}표 이상 득표 항목만 표시)\n"
         report += "> 리뷰 기준: **보안/로직/성능** + **Java 코드 컨벤션 (Google Java Style Guide)**\n\n"
 
         sorted_issues = sorted(
@@ -258,9 +269,9 @@ async def main():
                     file_link = f"https://github.com/{GITHUB_REPO}/blob/{head_sha}/{file_path}#L{line}"
                 else:
                     file_link = f"https://github.com/{GITHUB_REPO}/blob/main/{file_path}#L{line}"
-                report += f"- {severity_emoji}{rule_badge} **[{file_path}:{line}]({file_link})**: {issue['issue']} ({issue['count']}/3 동의)\n"
+                report += f"- {severity_emoji}{rule_badge} **[{file_path}:{line}]({file_link})**: {issue['issue']} ({issue['count']}/{responded} 동의)\n"
             else:
-                report += f"- {severity_emoji}{rule_badge} **{file_path}:{line}**: {issue['issue']} ({issue['count']}/3 동의)\n"
+                report += f"- {severity_emoji}{rule_badge} **{file_path}:{line}**: {issue['issue']} ({issue['count']}/{responded} 동의)\n"
 
         post_github_comment(report)
     else:
