@@ -96,8 +96,10 @@ public class LunchFlowService {
      *
      * <p>이미지 변경이 없으면 조기 종료합니다.
      * 모든 작업 완료 후 임시 파일을 정리합니다.
+     *
+     * @throws IOException 크롤링, Gemini 분석, 또는 모든 채널 전송 실패 시
      */
-    public void run() {
+    public void run() throws IOException {
         try {
             log.info("처리 시작...");
 
@@ -167,10 +169,12 @@ public class LunchFlowService {
                 log.info("✅ 작업이 완료되었습니다.");
             } else {
                 log.warn("⚠️ 모든 채널 전송에 실패하여 해시를 저장하지 않습니다. 다음 실행 시 재시도합니다.");
+                throw new IOException("모든 채널 전송에 실패했습니다.");
             }
 
         } catch (IOException e) {
             log.error("❌ 오류 발생: {}", e.getMessage());
+            throw e;
         } finally {
             cleanupTempFiles();
         }

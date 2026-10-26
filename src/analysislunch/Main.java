@@ -74,8 +74,10 @@ public class Main {
 
         } catch (IllegalStateException e) {
             log.error("❌ 초기화 실패", e);
+            System.exit(1);
         } catch (Exception e) {
             log.error("❌ 치명적 오류 발생: [{}]", e.getClass().getSimpleName(), e);
+            System.exit(1);
         }
     }
 }

@@ -106,22 +106,26 @@ public class AppConfig {
      */
     private static String optionalEnv(String key) {
         String value = System.getenv(key);
-        return (value == null || value.isEmpty()) ? null : value;
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     /**
      * 환경 변수 값을 읽고, 누락된 경우 예외를 던집니다.
      *
      * @param key 환경 변수 키
-     * @return 환경 변수 값
+     * @return 앞뒤 공백이 제거된 환경 변수 값
      * @throws IllegalStateException 환경 변수가 null이거나 비어있을 때
      */
     private static String requireEnv(String key) {
         String value = System.getenv(key);
-        if (value == null || value.isEmpty()) {
+        if (value == null || value.trim().isEmpty()) {
             throw new IllegalStateException("필수 환경 변수 누락: " + key);
         }
-        return value;
+        return value.trim();
     }
 
     /**

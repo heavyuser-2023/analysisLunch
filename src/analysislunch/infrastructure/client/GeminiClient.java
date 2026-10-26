@@ -52,7 +52,7 @@ public class GeminiClient {
      * @param apiKey Gemini API 키
      */
     public GeminiClient(String apiKey) {
-        this.apiKey = apiKey;
+        this.apiKey = apiKey != null ? apiKey.trim() : "";
     }
 
     /**
@@ -204,21 +204,27 @@ public class GeminiClient {
         String response = callGeminiWithRetry(API_URL_TEXT + "?key=" + apiKey, jsonBody, "칼로리 분석");
         log.info("칼로리 분석 응답 수신 완료");
 
-        return JsonUtils.extractGeminiText(response);
+        String result = JsonUtils.extractGeminiText(response);
+        if (result == null || result.isBlank() || JsonUtils.FALLBACK_TEXT.equals(result.trim())) {
+            log.warn("칼로리 분석 실패. Gemini 원본 응답: {}",
+                response.substring(0, Math.min(2000, response.length())));
+            throw new IOException("칼로리 분석 실패: Gemini 응답에서 유효한 텍스트를 추출할 수 없습니다.");
+        }
+        return result;
     }
 
     /**
      * Gemini API를 호출하되, 일시적 오류(429/500/503, UNAVAILABLE 등)나
      * 네트워크 예외 발생 시 지수 백오프로 재시도합니다.
      *
-     * <p>최종 시도까지 일시 오류가 지속되면 마지막 응답을 그대로 반환하여,
-     * 호출부의 기존 응답 검증/오류 처리 로직이 동작하도록 합니다.
+     * <p>재시도 대상이 아닌 API 오류(400 API_KEY_INVALID, 402 크레딧 소진 등)이거나
+     * 최종 시도까지 오류가 지속되면 구체적인 원인을 담은 {@link IOException}을 던집니다.
      *
      * @param url      요청 URL (API 키 포함)
      * @param jsonBody 요청 본문 JSON
      * @param taskName 로그 식별용 작업 이름
      * @return Gemini 응답 본문 문자열
-     * @throws IOException 마지막 시도까지 네트워크 오류가 지속될 때
+     * @throws IOException API 오류 응답 또는 마지막 시도까지 네트워크 오류가 지속될 때
      */
     private String callGeminiWithRetry(String url, String jsonBody, String taskName) throws IOException {
         long backoffMs = INITIAL_BACKOFF_MS;
@@ -226,6 +232,7 @@ public class GeminiClient {
             try {
                 String response = HttpUtils.postJson(url, null, jsonBody);
                 if (!isTransientError(response) || attempt >= MAX_ATTEMPTS) {
+                    throwIfApiError(response, taskName);
                     return response;
                 }
                 log.warn("{} Gemini 일시 오류 (시도 {}/{}). {}ms 후 재시도. 응답: {}",
@@ -244,10 +251,40 @@ public class GeminiClient {
     }
 
     /**
+     * Gemini 응답에 {@code error} 객체가 포함되어 있으면 상세 원인을 담아 {@link IOException}을 던집니다.
+     *
+     * @param response Gemini 응답 본문 문자열
+     * @param taskName 로그 식별용 작업 이름
+     * @throws IOException Gemini API 오류 응답일 때
+     */
+    private void throwIfApiError(String response, String taskName) throws IOException {
+        if (response == null || response.isBlank()) {
+            return;
+        }
+        try {
+            JsonObject obj = GSON.fromJson(response, JsonObject.class);
+            if (obj == null || !obj.has("error") || !obj.get("error").isJsonObject()) {
+                return;
+            }
+            JsonObject error = obj.getAsJsonObject("error");
+            int code = error.has("code") ? error.get("code").getAsInt() : 0;
+            String status = error.has("status") ? error.get("status").getAsString() : "UNKNOWN";
+            String message = error.has("message") ? error.get("message").getAsString() : response;
+            log.error("{} Gemini API 오류 응답 (code={}, status={}): {}", taskName, code, status, message);
+            throw new IOException(
+                String.format("%s 실패 - Gemini API 오류 (%d %s): %s", taskName, code, status, message)
+            );
+        } catch (RuntimeException e) {
+            // JSON 파싱 실패 시 호출부의 기존 응답 검증 로직에 위임
+        }
+    }
+
+    /**
      * Gemini 응답이 재시도 가능한 일시적 오류인지 판별합니다.
      *
      * <p>응답이 비어 있거나, {@code error.code}가 429/500/503이거나
      * {@code error.status}가 UNAVAILABLE/RESOURCE_EXHAUSTED/INTERNAL이면 일시 오류로 봅니다.
+     * 단, 400/401/402/403/404 등 영구적인 클라이언트/결제 오류는 재시도하지 않습니다.
      *
      * @param response Gemini 응답 본문 문자열
      * @return 일시적 오류이면 {@code true}
@@ -263,6 +300,9 @@ public class GeminiClient {
             }
             JsonObject error = obj.getAsJsonObject("error");
             int code = error.has("code") ? error.get("code").getAsInt() : 0;
+            if (code == 400 || code == 401 || code == 402 || code == 403 || code == 404) {
+                return false;
+            }
             String status = error.has("status") ? error.get("status").getAsString() : "";
             return code == 429 || code == 500 || code == 503
                 || "UNAVAILABLE".equals(status)
