@@ -6,6 +6,7 @@ import analysislunch.config.AppConfig;
 import analysislunch.domain.service.ImageService;
 import analysislunch.domain.service.LunchFlowService;
 import analysislunch.infrastructure.client.DiscordClient;
+import analysislunch.infrastructure.client.AiClient;
 import analysislunch.infrastructure.client.GeminiClient;
 import analysislunch.infrastructure.client.GitHubClient;
 import analysislunch.infrastructure.client.GoogleChatClient;
@@ -38,7 +39,7 @@ public class Main {
             // 2. 인프라 초기화
             BlogCrawler blogCrawler = new BlogCrawler();
             ImageService imageService = new ImageService();
-            GeminiClient geminiClient = new GeminiClient(config.getGeminiApiKey());
+            AiClient aiClient = createAiClient(config);
             SlackClient slackClient = new SlackClient(config.getBotToken());
             GitHubClient gitHubClient = new GitHubClient(config.getGithubToken(), config.getGithubRepo());
             GoogleChatClient googleChatClient = new GoogleChatClient(config.getGoogleChatWebhook());
@@ -59,7 +60,7 @@ public class Main {
                 config,
                 imageService,
                 blogCrawler,
-                geminiClient,
+                aiClient,
                 slackClient,
                 gitHubClient,
                 googleChatClient,
@@ -79,5 +80,13 @@ public class Main {
             log.error("❌ 치명적 오류 발생: [{}]", e.getClass().getSimpleName(), e);
             System.exit(1);
         }
+    }
+
+    static AiClient createAiClient(AppConfig config) {
+        return switch (config.getAiProvider()) {
+            case "gemini" -> new GeminiClient(config.getGeminiConfig().getApiKey());
+            default -> throw new IllegalStateException(
+                "지원하지 않는 AI_PROVIDER: " + config.getAiProvider());
+        };
     }
 }

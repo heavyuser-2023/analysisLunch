@@ -9,7 +9,7 @@ public class AppConfig {
 
     private static final String ENV_SLACK_BOT_TOKEN = "SLACK_BOT_TOKEN";
     private static final String ENV_SLACK_CHANNEL_ID = "SLACK_CHANNEL_ID";
-    private static final String ENV_GEMINI_API_KEY = "GEMINI_API_KEY";
+    private static final String ENV_AI_PROVIDER = "AI_PROVIDER";
     private static final String ENV_GITHUB_TOKEN = "GITHUB_TOKEN";
     private static final String ENV_GITHUB_REPO = "GITHUB_REPO";
     private static final String ENV_GOOGLE_CHAT_WEBHOOK_URL = "GOOGLE_CHAT_WEBHOOK_URL";
@@ -21,7 +21,8 @@ public class AppConfig {
 
     private final String botToken;
     private final String channelId;
-    private final String geminiApiKey;
+    private final GeminiConfig geminiConfig;
+    private final String aiProvider;
     private final String githubToken;
     private final String githubRepo;
     private final String googleChatWebhook;
@@ -58,9 +59,28 @@ public class AppConfig {
             String discordWebhook,
             String instagramAccessToken,
             String instagramBusinessAccountId) {
+        this(botToken, channelId, new GeminiConfig(geminiApiKey), githubToken, githubRepo,
+            googleChatWebhook, telegramBotToken, telegramChatId, discordWebhook,
+            instagramAccessToken, instagramBusinessAccountId, "gemini");
+    }
+
+    private AppConfig(
+            String botToken,
+            String channelId,
+            GeminiConfig geminiConfig,
+            String githubToken,
+            String githubRepo,
+            String googleChatWebhook,
+            String telegramBotToken,
+            String telegramChatId,
+            String discordWebhook,
+            String instagramAccessToken,
+            String instagramBusinessAccountId,
+            String aiProvider) {
         this.botToken = botToken;
         this.channelId = channelId;
-        this.geminiApiKey = geminiApiKey;
+        this.geminiConfig = geminiConfig;
+        this.aiProvider = aiProvider;
         this.githubToken = githubToken;
         this.githubRepo = githubRepo;
         this.googleChatWebhook = googleChatWebhook;
@@ -80,7 +100,15 @@ public class AppConfig {
     public static AppConfig load() {
         String botToken = requireEnv(ENV_SLACK_BOT_TOKEN);
         String channelId = requireEnv(ENV_SLACK_CHANNEL_ID);
-        String geminiApiKey = requireEnv(ENV_GEMINI_API_KEY);
+        String aiProvider = optionalEnv(ENV_AI_PROVIDER);
+        if (aiProvider == null) {
+            aiProvider = "gemini";
+        }
+        GeminiConfig geminiConfig = null;
+        switch (aiProvider) {
+            case "gemini" -> geminiConfig = GeminiConfig.load();
+            default -> throw new IllegalStateException("지원하지 않는 AI_PROVIDER: " + aiProvider);
+        }
         String githubToken = requireEnv(ENV_GITHUB_TOKEN);
         String githubRepo = requireEnv(ENV_GITHUB_REPO);
         String googleChatWebhook = requireEnv(ENV_GOOGLE_CHAT_WEBHOOK_URL);
@@ -93,9 +121,9 @@ public class AppConfig {
         String instagramBusinessAccountId = optionalEnv(ENV_INSTAGRAM_BUSINESS_ACCOUNT_ID);
 
         return new AppConfig(
-            botToken, channelId, geminiApiKey, githubToken, githubRepo, googleChatWebhook,
+            botToken, channelId, geminiConfig, githubToken, githubRepo, googleChatWebhook,
             telegramBotToken, telegramChatId, discordWebhook,
-            instagramAccessToken, instagramBusinessAccountId);
+            instagramAccessToken, instagramBusinessAccountId, aiProvider);
     }
 
     /**
@@ -152,7 +180,17 @@ public class AppConfig {
      * @return Gemini API 키
      */
     public String getGeminiApiKey() {
-        return geminiApiKey;
+        return geminiConfig.getApiKey();
+    }
+
+    /** Gemini 전용 API 설정을 반환합니다. */
+    public GeminiConfig getGeminiConfig() {
+        return geminiConfig;
+    }
+
+    /** 선택한 AI 공급자 이름을 반환합니다. 기본값은 gemini입니다. */
+    public String getAiProvider() {
+        return aiProvider;
     }
 
     /**
