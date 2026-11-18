@@ -8,6 +8,7 @@ import analysislunch.domain.service.LunchFlowService;
 import analysislunch.infrastructure.client.DiscordClient;
 import analysislunch.infrastructure.client.AiClient;
 import analysislunch.infrastructure.client.GeminiClient;
+import analysislunch.infrastructure.client.OpenAiClient;
 import analysislunch.infrastructure.client.GitHubClient;
 import analysislunch.infrastructure.client.GoogleChatClient;
 import analysislunch.infrastructure.client.InstagramClient;
@@ -85,6 +86,7 @@ public class Main {
     static AiClient createAiClient(AppConfig config) {
         return switch (config.getAiProvider()) {
             case "gemini" -> new GeminiClient(config.getGeminiConfig().getApiKey());
+            case "openai" -> new OpenAiClient(config.getOpenAiConfig().getApiKey());
             default -> throw new IllegalStateException(
                 "지원하지 않는 AI_PROVIDER: " + config.getAiProvider());
         };

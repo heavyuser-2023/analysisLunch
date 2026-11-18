@@ -22,6 +22,7 @@ public class AppConfig {
     private final String botToken;
     private final String channelId;
     private final GeminiConfig geminiConfig;
+    private final OpenAiConfig openAiConfig;
     private final String aiProvider;
     private final String githubToken;
     private final String githubRepo;
@@ -61,7 +62,7 @@ public class AppConfig {
             String instagramBusinessAccountId) {
         this(botToken, channelId, new GeminiConfig(geminiApiKey), githubToken, githubRepo,
             googleChatWebhook, telegramBotToken, telegramChatId, discordWebhook,
-            instagramAccessToken, instagramBusinessAccountId, "gemini");
+            instagramAccessToken, instagramBusinessAccountId, "gemini", null);
     }
 
     private AppConfig(
@@ -76,10 +77,12 @@ public class AppConfig {
             String discordWebhook,
             String instagramAccessToken,
             String instagramBusinessAccountId,
-            String aiProvider) {
+            String aiProvider,
+            OpenAiConfig openAiConfig) {
         this.botToken = botToken;
         this.channelId = channelId;
         this.geminiConfig = geminiConfig;
+        this.openAiConfig = openAiConfig;
         this.aiProvider = aiProvider;
         this.githubToken = githubToken;
         this.githubRepo = githubRepo;
@@ -105,8 +108,10 @@ public class AppConfig {
             aiProvider = "gemini";
         }
         GeminiConfig geminiConfig = null;
+        OpenAiConfig openAiConfig = null;
         switch (aiProvider) {
             case "gemini" -> geminiConfig = GeminiConfig.load();
+            case "openai" -> openAiConfig = OpenAiConfig.load();
             default -> throw new IllegalStateException("지원하지 않는 AI_PROVIDER: " + aiProvider);
         }
         String githubToken = requireEnv(ENV_GITHUB_TOKEN);
@@ -123,7 +128,7 @@ public class AppConfig {
         return new AppConfig(
             botToken, channelId, geminiConfig, githubToken, githubRepo, googleChatWebhook,
             telegramBotToken, telegramChatId, discordWebhook,
-            instagramAccessToken, instagramBusinessAccountId, aiProvider);
+            instagramAccessToken, instagramBusinessAccountId, aiProvider, openAiConfig);
     }
 
     /**
@@ -180,7 +185,7 @@ public class AppConfig {
      * @return Gemini API 키
      */
     public String getGeminiApiKey() {
-        return geminiConfig.getApiKey();
+        return geminiConfig == null ? null : geminiConfig.getApiKey();
     }
 
     /** Gemini 전용 API 설정을 반환합니다. */
@@ -191,6 +196,11 @@ public class AppConfig {
     /** 선택한 AI 공급자 이름을 반환합니다. 기본값은 gemini입니다. */
     public String getAiProvider() {
         return aiProvider;
+    }
+
+    /** OpenAI 전용 설정을 반환하며, 미선택 시 null입니다. */
+    public OpenAiConfig getOpenAiConfig() {
+        return openAiConfig;
     }
 
     /**
