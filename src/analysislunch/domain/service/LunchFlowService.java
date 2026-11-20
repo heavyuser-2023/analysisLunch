@@ -8,7 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import analysislunch.config.AppConfig;
 import analysislunch.domain.model.MenuInfo;
-import analysislunch.infrastructure.client.GeminiClient;
+import analysislunch.infrastructure.client.AiClient;
 import analysislunch.infrastructure.client.GitHubClient;
 import analysislunch.infrastructure.client.DiscordClient;
 import analysislunch.infrastructure.client.GoogleChatClient;
@@ -46,7 +46,7 @@ public class LunchFlowService {
     private final AppConfig config;
     private final ImageService imageService;
     private final BlogCrawler blogCrawler;
-    private final GeminiClient geminiClient;
+    private final AiClient aiClient;
     private final SlackClient slackClient;
     private final GitHubClient gitHubClient;
     private final GoogleChatClient googleChatClient;
@@ -60,7 +60,7 @@ public class LunchFlowService {
      * @param config           애플리케이션 설정
      * @param imageService     이미지 처리 서비스
      * @param blogCrawler      블로그 크롤러
-     * @param geminiClient     Gemini API 클라이언트
+     * @param aiClient         AI 분석 클라이언트
      * @param slackClient      Slack API 클라이언트
      * @param gitHubClient     GitHub API 클라이언트
      * @param googleChatClient Google Chat API 클라이언트
@@ -72,7 +72,7 @@ public class LunchFlowService {
             AppConfig config,
             ImageService imageService,
             BlogCrawler blogCrawler,
-            GeminiClient geminiClient,
+            AiClient aiClient,
             SlackClient slackClient,
             GitHubClient gitHubClient,
             GoogleChatClient googleChatClient,
@@ -82,7 +82,7 @@ public class LunchFlowService {
         this.config = config;
         this.imageService = imageService;
         this.blogCrawler = blogCrawler;
-        this.geminiClient = geminiClient;
+        this.aiClient = aiClient;
         this.slackClient = slackClient;
         this.gitHubClient = gitHubClient;
         this.googleChatClient = googleChatClient;
@@ -97,7 +97,7 @@ public class LunchFlowService {
      * <p>이미지 변경이 없으면 조기 종료합니다.
      * 모든 작업 완료 후 임시 파일을 정리합니다.
      *
-     * @throws IOException 크롤링, Gemini 분석, 또는 모든 채널 전송 실패 시
+     * @throws IOException 크롤링, AI 분석, 또는 모든 채널 전송 실패 시
      */
     public void run() throws IOException {
         try {
@@ -129,17 +129,17 @@ public class LunchFlowService {
 
             // 5. 이미지에서 메뉴 텍스트 추출
             log.info("이미지에서 메뉴 텍스트 추출 중...");
-            MenuInfo menuInfo = geminiClient.extractMenuInfo(processedFile);
+            MenuInfo menuInfo = aiClient.extractMenuInfo(processedFile);
             log.info("추출된 날짜: {}", menuInfo.date());
             log.info("추출된 메뉴: {}", menuInfo.menu());
 
             // 6. 식판 이미지 생성
-            log.info("Gemini로 식판 이미지 생성 중...");
-            File generatedImage = geminiClient.generateFoodImage(menuInfo.menu());
+            log.info("AI로 식판 이미지 생성 중...");
+            File generatedImage = aiClient.generateFoodImage(menuInfo.menu());
 
             // 7. 칼로리 분석
             log.info("칼로리 분석 중...");
-            String calorieAnalysis = geminiClient.analyzeCalories(generatedImage, menuInfo.menu());
+            String calorieAnalysis = aiClient.analyzeCalories(generatedImage, menuInfo.menu());
             log.info("{}", calorieAnalysis);
 
             // 8. 칼로리 카드 이미지 생성

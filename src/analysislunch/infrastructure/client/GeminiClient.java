@@ -14,7 +14,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import analysislunch.domain.model.MenuInfo;
 import analysislunch.utils.HttpUtils;
-import analysislunch.utils.JsonUtils;
 
 /**
  * Google Gemini API와 통신하는 클라이언트 클래스.
@@ -22,7 +21,7 @@ import analysislunch.utils.JsonUtils;
  * <p>메뉴 이미지 OCR, 음식 이미지 생성, 칼로리 분석 기능을 제공합니다.
  */
 @Slf4j
-public class GeminiClient {
+public class GeminiClient implements AiClient {
 
     private static final String API_URL_TEXT =
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent";
@@ -65,9 +64,7 @@ public class GeminiClient {
     public MenuInfo extractMenuInfo(File imageFile) throws IOException {
         String base64Image = encodeImageToBase64(imageFile);
 
-        String prompt = "이 이미지는 구내식당 메뉴판입니다. 오늘의 날짜와 메뉴 내용을 추출해주세요. "
-            + "첫 번째 줄에는 날짜만 적고, 두 번째 줄에는 메뉴 이름만 쉼표로 구분해서 작성해주세요. "
-            + "설명이나 다른 말은 하지 마세요.";
+        String prompt = LunchPrompts.MENU_OCR;
 
         String jsonBody = GSON.toJson(buildTextWithImageRequest(prompt, base64Image, MIME_TYPE_JPEG));
 
@@ -75,8 +72,8 @@ public class GeminiClient {
         log.info("메뉴 텍스트 추출 응답 수신 완료");
         log.debug("메뉴 OCR 원본 응답: {}", response);
 
-        String fullText = JsonUtils.extractGeminiText(response);
-        if (fullText == null || fullText.isBlank() || JsonUtils.FALLBACK_TEXT.equals(fullText.trim())) {
+        String fullText = GeminiResponseParser.extractGeminiText(response);
+        if (fullText == null || fullText.isBlank() || GeminiResponseParser.FALLBACK_TEXT.equals(fullText.trim())) {
             log.warn("메뉴 OCR 실패. Gemini 원본 응답: {}",
                 response.substring(0, Math.min(2000, response.length())));
             throw new IOException("메뉴 OCR 실패: Gemini 응답에서 유효한 텍스트를 추출할 수 없습니다.");
@@ -97,32 +94,7 @@ public class GeminiClient {
      * @throws IOException 이미지 생성 API 호출 실패 또는 이미지 데이터 추출 실패 시
      */
     public File generateFoodImage(String menuText) throws IOException {
-        String prompt = String.format("""
-            당신은 한국 구내식당 음식 사진 전문가입니다.
-            다음 메뉴를 한국식 6칸 식판에 담긴 실제 음식 사진처럼 생성해주세요.
-
-            메뉴: %s
-
-            === 식판 구조 ===
-            - 한국식 플라스틱 식판 (약한 회색 바탕, 검은 점 산재)
-            - 오른쪽: 수저/젓가락 칸 + 상단에 소스용 작은 칸
-            - 하단: 밥칸(네모) + 국칸(동그라미, 별도 하얀색 멜라민 국그릇)
-            - 상단: 반찬 3칸 (좌우 동그라미, 가운데는 네모칸이고 좌우로 2등분)
-
-            === 촬영 조건 ===
-            - Top-down 시점, 흰색 테이블 배경
-            - 자연광, 사실적 질감, 고해상도
-            - 반찬이 많으면 한 칸에 여러 음식 배치 가능
-            - 식판에 음식이 담긴 모습이 사람이 실제 담은것 처럼
-              (밥, 반찬이 정형적이지 않게 배치, 반찬이 조금 넘치기도 하고 )
-            - 식탁은 흰색 테이블 깔끔한 6인용 테이블
-
-            ⛔⛔⛔ 절대 금지 (위반 시 실패) ⛔⛔⛔
-            1. 정의된 6칸 외 추가 칸 생성 금지
-            2. 이미지 위 텍스트/라벨/음식명 표시 절대 금지
-            3. 식판 외부에 음식/장식 배치 금지
-            4. 메뉴 목록 중 이미지 생성 누락 금지
-            """, menuText);
+        String prompt = LunchPrompts.foodImage(menuText);
 
         JsonObject textPart = new JsonObject();
         textPart.addProperty("text", prompt);
@@ -148,7 +120,7 @@ public class GeminiClient {
         String response = callGeminiWithRetry(API_URL_IMAGE + "?key=" + apiKey, jsonBody, "이미지 생성");
         log.info("이미지 생성 응답 수신 완료 (길이: {})", response.length());
 
-        String base64Image = JsonUtils.extractImageData(response);
+        String base64Image = GeminiResponseParser.extractImageData(response);
         if (base64Image == null || base64Image.isEmpty()) {
             throw new IOException(
                 "이미지 생성 실패. 응답: " + response.substring(0, Math.min(500, response.length()))
@@ -178,34 +150,15 @@ public class GeminiClient {
     public String analyzeCalories(File imageFile, String menuText) throws IOException {
         String base64Image = encodeImageToBase64(imageFile);
 
-        String prompt = String.format("""
-            이 이미지는 다음 메뉴로 구성된 점심 도시락(식판) 사진입니다:
-            %s
-            
-            위 메뉴 목록에 있는 '모든' 항목들에 대해 예상 칼로리를 분석해서 표(Table) 형태로 정리해주세요.
-            
-            [중요 규칙]
-            1. 표의 '메뉴명'은 위에서 제공된 메뉴 이름을 그대로 사용해야 합니다. (임의로 바꾸거나 생략하지 마세요)
-            2. 사진에 보이지 않거나 불분명하더라도, 메뉴 목록에 있다면 포함시켜주세요.
-            3. 반찬이 여러 개라면 모든 반찬을 나열해주세요.
-            
-            출력 형식:
-            | 메뉴명 | 예상 칼로리 |
-            |---|---|
-            | 쌀밥 | 300kcal |
-            ...
-            
-            마지막에는 **총 예상 칼로리: XXXkcal** 형태로 합계를 적어주세요.
-            설명은 생략하고 표와 합계만 간단히 출력하세요.
-            """, menuText);
+        String prompt = LunchPrompts.calories(menuText);
 
         String jsonBody = GSON.toJson(buildTextWithImageRequest(prompt, base64Image, MIME_TYPE_PNG));
 
         String response = callGeminiWithRetry(API_URL_TEXT + "?key=" + apiKey, jsonBody, "칼로리 분석");
         log.info("칼로리 분석 응답 수신 완료");
 
-        String result = JsonUtils.extractGeminiText(response);
-        if (result == null || result.isBlank() || JsonUtils.FALLBACK_TEXT.equals(result.trim())) {
+        String result = GeminiResponseParser.extractGeminiText(response);
+        if (result == null || result.isBlank() || GeminiResponseParser.FALLBACK_TEXT.equals(result.trim())) {
             log.warn("칼로리 분석 실패. Gemini 원본 응답: {}",
                 response.substring(0, Math.min(2000, response.length())));
             throw new IOException("칼로리 분석 실패: Gemini 응답에서 유효한 텍스트를 추출할 수 없습니다.");

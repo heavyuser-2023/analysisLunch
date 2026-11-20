@@ -1,6 +1,5 @@
 package analysislunch.utils;
 
-
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -9,15 +8,9 @@ import com.google.gson.JsonParser;
 
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * JSON 파싱 유틸리티 클래스.
- *
- * <p>Gemini API 응답, Slack API 응답 등의 JSON 데이터에서 필요한 값을 추출합니다.
- */
+/** 공급자와 무관한 JSON 값 접근 유틸리티. */
 @Slf4j
 public final class JsonUtils {
-    public static final String FALLBACK_TEXT = "분석 결과 없음";
-
     private JsonUtils() {
         // 유틸리티 클래스 - 인스턴스화 금지
     }
@@ -26,7 +19,7 @@ public final class JsonUtils {
      * JSON 문자열의 최상위 객체에서 특정 키의 값을 추출합니다.
      *
      * @param json JSON 문자열
-     * @param key  추출할 키
+     * @param key 추출할 키
      * @return 키에 해당하는 값 문자열, 없거나 파싱 실패 시 {@code null}
      */
     public static String extract(String json, String key) {
@@ -42,107 +35,16 @@ public final class JsonUtils {
         }
     }
 
-    /**
-     * Gemini API 응답 JSON에서 텍스트 내용을 추출합니다.
-     *
-     * @param json Gemini API 응답 JSON 문자열
-     * @return 추출된 텍스트, 없거나 파싱 실패 시 {@value #FALLBACK_TEXT}
-     */
-    public static String extractGeminiText(String json) {
-        try {
-            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-            JsonArray candidates = getArray(root, "candidates");
-            if (candidates == null) {
-                return FALLBACK_TEXT;
-            }
-            for (JsonElement candidateEl : candidates) {
-                JsonObject candidate = asObject(candidateEl);
-                if (candidate == null) {
-                    continue;
-                }
-                JsonObject content = getObject(candidate, "content");
-                if (content == null) {
-                    continue;
-                }
-                JsonArray parts = getArray(content, "parts");
-                if (parts == null) {
-                    continue;
-                }
-                for (JsonElement partEl : parts) {
-                    JsonObject part = asObject(partEl);
-                    if (part != null && !isThoughtPart(part) && part.has("text")) {
-                        return jsonElementToString(part.get("text"));
-                    }
-                }
-            }
-            return FALLBACK_TEXT;
-        } catch (JsonParseException | IllegalStateException e) {
-            log.warn("Gemini 응답 텍스트 추출 실패: {}", e.getMessage());
-            return FALLBACK_TEXT;
-        }
-    }
-
-    /**
-     * Gemini API 응답 JSON에서 Base64 인코딩된 이미지 데이터를 추출합니다.
-     *
-     * @param json Gemini API 응답 JSON 문자열
-     * @return Base64 이미지 데이터 문자열, 없거나 파싱 실패 시 {@code null}
-     */
-    public static String extractImageData(String json) {
-        try {
-            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-            JsonArray candidates = getArray(root, "candidates");
-            if (candidates == null) {
-                return null;
-            }
-            for (JsonElement candidateEl : candidates) {
-                JsonObject candidate = asObject(candidateEl);
-                if (candidate == null) {
-                    continue;
-                }
-                JsonObject content = getObject(candidate, "content");
-                if (content == null) {
-                    continue;
-                }
-                JsonArray parts = getArray(content, "parts");
-                if (parts == null) {
-                    continue;
-                }
-                for (JsonElement partEl : parts) {
-                    JsonObject part = asObject(partEl);
-                    if (part == null || isThoughtPart(part)) {
-                        continue;
-                    }
-                    JsonObject inlineData = getObject(part, "inlineData");
-                    if (inlineData == null) {
-                        inlineData = getObject(part, "inline_data");
-                    }
-                    if (inlineData != null && inlineData.has("data")) {
-                        return jsonElementToString(inlineData.get("data"));
-                    }
-                }
-            }
-            return null;
-        } catch (JsonParseException | IllegalStateException e) {
-            log.warn("Gemini 응답 이미지 데이터 추출 실패: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    // 사고 과정을 거치는 모델은 중간 결과(초안 이미지 등)를 thought: true 파트로 보낼 수 있으므로 건너뜀
-    private static boolean isThoughtPart(JsonObject part) {
-        JsonElement thought = part.get("thought");
-        return thought != null && thought.isJsonPrimitive() && thought.getAsBoolean();
-    }
-
-    private static JsonObject getObject(JsonObject obj, String key) {
+    /** 객체의 자식 객체를 반환하며, 없거나 객체가 아니면 {@code null}입니다. */
+    public static JsonObject getObject(JsonObject obj, String key) {
         if (obj == null || !obj.has(key) || obj.get(key).isJsonNull()) {
             return null;
         }
         return asObject(obj.get(key));
     }
 
-    private static JsonArray getArray(JsonObject obj, String key) {
+    /** 객체의 자식 배열을 반환하며, 없거나 배열이 아니면 {@code null}입니다. */
+    public static JsonArray getArray(JsonObject obj, String key) {
         if (obj == null || !obj.has(key) || obj.get(key).isJsonNull()) {
             return null;
         }
@@ -150,11 +52,13 @@ public final class JsonUtils {
         return el.isJsonArray() ? el.getAsJsonArray() : null;
     }
 
-    private static JsonObject asObject(JsonElement el) {
+    /** JSON 값이 객체일 때만 객체로 반환합니다. */
+    public static JsonObject asObject(JsonElement el) {
         return el != null && el.isJsonObject() ? el.getAsJsonObject() : null;
     }
 
-    private static String jsonElementToString(JsonElement el) {
+    /** 단순 값은 문자열로, 구조화된 값은 JSON으로 반환합니다. */
+    public static String jsonElementToString(JsonElement el) {
         if (el == null || el.isJsonNull()) {
             return null;
         }
