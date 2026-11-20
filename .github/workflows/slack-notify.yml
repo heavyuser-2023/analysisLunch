@@ -1,10 +1,9 @@
 name: Hourly Slack Notification
 
 on:
-  schedule:
-    # KST 기준 월~금 오전 9시 30분 실행 (UTC 00:30)
-    - cron: '30 0 * * 1-5'
-  workflow_dispatch: # 수동으로 실행 버튼을 눌러 테스트할 수 있게 함
+  # 스케줄 실행 없음: 외부에서 workflow_dispatch API로 호출하여 실행
+  # POST /repos/{owner}/{repo}/actions/workflows/slack-notify.yml/dispatches  body: {"ref":"main"}
+  workflow_dispatch:
 
 jobs:
   send-slack:
